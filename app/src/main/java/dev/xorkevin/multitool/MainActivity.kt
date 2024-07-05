@@ -6,12 +6,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalDrawerSheet
@@ -41,7 +43,6 @@ import androidx.navigation.compose.rememberNavController
 import dev.xorkevin.multitool.ui.theme.MultitoolTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import kotlin.reflect.KClass
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -62,13 +63,17 @@ sealed interface Route {
     sealed interface Tools {
         @Serializable
         data object Hash
+
+        @Serializable
+        data object Greeting
     }
 }
 
-data class RouteEntry(val route: KClass<*>, val name: String)
+data class RouteEntry(val route: Any, val name: String)
 
 val routes = listOf(
-    RouteEntry(Route.Tools.Hash::class, "Hash")
+    RouteEntry(Route.Tools.Hash, "Hash"),
+    RouteEntry(Route.Tools.Greeting, "Greeting"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -82,37 +87,39 @@ fun App() {
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = currentBackStackEntry?.destination
 
+    val screenName = if (currentDestination != null) routes.find {
+        currentDestination.hasRoute(it.route::class)
+    }?.name ?: "Home" else "Home"
+
     ModalNavigationDrawer(modifier = Modifier.fillMaxSize(),
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
                 Text("Tools", modifier = Modifier.padding(16.dp))
-                HorizontalDivider()
-                NavigationDrawerItem(
-                    label = { Text(text = "Hash") },
-                    selected = false,
-                    onClick = {
-                        navController.navigate(route = Route.Tools.Hash) {
-                            popUpTo(Route.Home)
-                        }
-                        scope.launch { drawerState.close() }
-                    },
-                )
+                routes.forEach {
+                    NavigationDrawerItem(
+                        label = { Text(text = it.name) },
+                        selected = currentDestination?.hasRoute(it.route::class) == true,
+                        onClick = {
+                            navController.navigate(route = it.route) {
+                                popUpTo(navController.graph.startDestinationId) {
+                                    saveState = true
+                                }
+                                launchSingleTop = true
+                                restoreState = true
+                            }
+                            scope.launch { drawerState.close() }
+                        },
+                    )
+                }
+
             }
         }) {
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 TopAppBar(
-                    title = {
-                        Text(
-                            text = if (currentDestination != null) routes.find {
-                                currentDestination.hasRoute(
-                                    it.route
-                                )
-                            }?.name ?: "Home" else "Home"
-                        )
-                    },
+                    title = { Text(text = screenName) },
                     navigationIcon = {
                         IconButton(onClick = {
                             scope.launch {
@@ -143,6 +150,9 @@ fun App() {
                     composable<Route.Tools.Hash> {
                         HashTool()
                     }
+                    composable<Route.Tools.Greeting> {
+                        Greeting()
+                    }
                 }
             }
         }
@@ -152,9 +162,29 @@ fun App() {
 @Composable
 fun HashTool() {
     var inp by remember { mutableStateOf("") }
+    val scrollState = rememberScrollState()
 
-    Column {
-        TextField(value = inp, onValueChange = { inp = it })
-        Text(text = inp)
+    Column(modifier = Modifier.verticalScroll(scrollState)) {
+        TextField(
+            value = inp,
+            onValueChange = { inp = it },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth()
+        )
+        Text(
+            text = inp, modifier = Modifier
+                .padding(16.dp)
+                .fillMaxWidth()
+        )
     }
+}
+
+@Composable
+fun Greeting() {
+    Text(
+        text = "Hello", modifier = Modifier
+            .padding(16.dp)
+            .fillMaxWidth()
+    )
 }
