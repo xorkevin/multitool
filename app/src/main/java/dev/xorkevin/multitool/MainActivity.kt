@@ -27,12 +27,14 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
@@ -41,8 +43,12 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.navigation
 import androidx.navigation.compose.rememberNavController
 import dev.xorkevin.multitool.ui.theme.MultitoolTheme
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
+import java.nio.charset.StandardCharsets
+import java.security.MessageDigest
+import kotlin.time.Duration.Companion.milliseconds
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -63,9 +69,6 @@ sealed interface Route {
     sealed interface Tools {
         @Serializable
         data object Hash
-
-        @Serializable
-        data object Greeting
     }
 }
 
@@ -73,7 +76,6 @@ data class RouteEntry(val route: Any, val name: String)
 
 val routes = listOf(
     RouteEntry(Route.Tools.Hash, "Hash"),
-    RouteEntry(Route.Tools.Greeting, "Greeting"),
 )
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -150,20 +152,35 @@ fun App() {
                     composable<Route.Tools.Hash> {
                         HashTool()
                     }
-                    composable<Route.Tools.Greeting> {
-                        Greeting()
-                    }
                 }
             }
         }
     }
 }
 
+data class HashResult(val name: String, val value: String)
+
+val hashAlgs = listOf("SHA-256", "SHA-512")
+
+@OptIn(ExperimentalStdlibApi::class)
 @Composable
 fun HashTool() {
     var inp by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
+    var hashes by remember { mutableStateOf(emptyList<HashResult>()) }
+    LaunchedEffect(inp) {
+        delay(250.milliseconds)
+        val inpBytes = inp.toByteArray(Charsets.UTF_8)
+        hashes = hashAlgs.map {
+            HashResult(
+                name = it,
+                value = MessageDigest.getInstance(it).digest(inpBytes).toHexString()
+            )
+        }
+    }
+
+    inp.toByteArray(StandardCharsets.UTF_8)
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         TextField(
             value = inp,
@@ -172,19 +189,17 @@ fun HashTool() {
                 .padding(8.dp)
                 .fillMaxWidth()
         )
-        Text(
-            text = inp, modifier = Modifier
-                .padding(16.dp)
-                .fillMaxWidth()
-        )
+        hashes.forEach {
+            Text(
+                text = it.name, modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            )
+            Text(
+                text = it.value, fontFamily = FontFamily.Monospace, modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            )
+        }
     }
-}
-
-@Composable
-fun Greeting() {
-    Text(
-        text = "Hello", modifier = Modifier
-            .padding(16.dp)
-            .fillMaxWidth()
-    )
 }
