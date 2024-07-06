@@ -46,7 +46,6 @@ import dev.xorkevin.multitool.ui.theme.MultitoolTheme
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
-import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -180,7 +179,6 @@ fun HashTool() {
         }
     }
 
-    inp.toByteArray(StandardCharsets.UTF_8)
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         TextField(
             value = inp,
