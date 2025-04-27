@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class)
+
 package dev.xorkevin.multitool
 
 import android.os.Bundle
@@ -61,23 +63,26 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-sealed interface Route {
-    @Serializable
-    data object Home
+object Route {
+    object Tool {
+        @Serializable
+        object Home
 
-    sealed interface Tools {
         @Serializable
         data object Hash
+
+        @Serializable
+        data object PGP
     }
 }
 
-data class RouteEntry(val route: Any, val name: String)
+data class RouteEntry<T : Any>(val route: T, val name: String)
 
 val routes = listOf(
-    RouteEntry(Route.Tools.Hash, "Hash"),
+    RouteEntry(Route.Tool.Hash, "Hash"),
+    RouteEntry(Route.Tool.PGP, "PGP"),
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun App() {
     val navController = rememberNavController()
@@ -92,7 +97,8 @@ fun App() {
         currentDestination.hasRoute(it.route::class)
     }?.name ?: "Home" else "Home"
 
-    ModalNavigationDrawer(modifier = Modifier.fillMaxSize(),
+    ModalNavigationDrawer(
+        modifier = Modifier.fillMaxSize(),
         drawerState = drawerState,
         drawerContent = {
             ModalDrawerSheet {
@@ -142,13 +148,16 @@ fun App() {
         ) { innerPadding ->
             NavHost(
                 navController = navController,
-                startDestination = Route.Home,
+                startDestination = Route.Tool.Home,
                 modifier = Modifier
                     .padding(innerPadding)
                     .fillMaxSize(),
             ) {
-                navigation<Route.Home>(startDestination = Route.Tools.Hash) {
-                    composable<Route.Tools.Hash> {
+                navigation<Route.Tool.Home>(startDestination = Route.Tool.Hash) {
+                    composable<Route.Tool.Hash> {
+                        HashTool()
+                    }
+                    composable<Route.Tool.PGP> {
                         HashTool()
                     }
                 }
@@ -161,7 +170,6 @@ data class HashResult(val name: String, val value: String)
 
 val hashAlgs = listOf("SHA-256", "SHA-512")
 
-@OptIn(ExperimentalStdlibApi::class)
 @Composable
 fun HashTool() {
     var inp by remember { mutableStateOf("") }
