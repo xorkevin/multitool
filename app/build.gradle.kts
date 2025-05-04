@@ -60,6 +60,7 @@ dependencies {
     implementation(libs.bcpg.jdk18on)
     implementation(libs.bcprov.jdk18on)
     implementation(libs.bcutil.jdk18on)
+    implementation(libs.kotlin.reflect)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
