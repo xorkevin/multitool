@@ -6,6 +6,7 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
@@ -76,35 +77,34 @@ fun App() {
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
     val scope = rememberCoroutineScope()
-
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
-    val currentDestination = currentBackStackEntry?.destination
-
-    val screenName = if (currentDestination != null) routes.find {
-        currentDestination.hasRoute(it.route::class)
-    }?.name ?: "Home" else "Home"
 
     ModalNavigationDrawer(
         modifier = Modifier.fillMaxSize(),
         drawerState = drawerState,
         drawerContent = {
-            ModalDrawerSheet {
-                Text("Tools", modifier = Modifier.padding(16.dp))
-                routes.forEach {
-                    NavigationDrawerItem(
-                        label = { Text(text = it.name) },
-                        selected = currentDestination?.hasRoute(it.route::class) == true,
-                        onClick = {
-                            navController.navigate(route = it.route) {
-                                popUpTo(navController.graph.startDestinationId) {
-                                    saveState = true
+            ModalDrawerSheet(
+                drawerState = drawerState
+            ) {
+                Column(modifier = Modifier.padding(8.dp)) {
+                    val currentDestination = currentBackStackEntry?.destination
+                    Text("Tools", modifier = Modifier.padding(16.dp))
+                    routes.forEach {
+                        NavigationDrawerItem(
+                            label = { Text(text = it.name) },
+                            selected = currentDestination?.hasRoute(it.route::class) == true,
+                            onClick = {
+                                scope.launch { drawerState.close() }
+                                navController.navigate(route = it.route) {
+                                    popUpTo(navController.graph.startDestinationId) {
+                                        saveState = true
+                                    }
+                                    launchSingleTop = true
+                                    restoreState = true
                                 }
-                                launchSingleTop = true
-                                restoreState = true
-                            }
-                            scope.launch { drawerState.close() }
-                        },
-                    )
+                            },
+                        )
+                    }
                 }
 
             }
@@ -113,7 +113,14 @@ fun App() {
             modifier = Modifier.fillMaxSize(),
             topBar = {
                 TopAppBar(
-                    title = { Text(text = screenName) },
+                    title = {
+                        Text(text = run {
+                            val currentDestination = currentBackStackEntry?.destination
+                            if (currentDestination != null) routes.find {
+                                currentDestination.hasRoute(it.route::class)
+                            }?.name ?: "Home" else "Home"
+                        })
+                    },
                     navigationIcon = {
                         IconButton(onClick = {
                             scope.launch {

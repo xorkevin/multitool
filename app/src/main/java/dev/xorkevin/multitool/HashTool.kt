@@ -29,9 +29,8 @@ val hashAlgs = listOf("SHA-256", "SHA-512")
 
 @Composable
 fun HashTool() {
-    var inp by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
-
+    var inp by remember { mutableStateOf("") }
     var hashes by remember { mutableStateOf(emptyList<HashResult>()) }
     LaunchedEffect(inp) {
         delay(250.milliseconds)

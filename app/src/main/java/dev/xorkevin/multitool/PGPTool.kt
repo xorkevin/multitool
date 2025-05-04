@@ -46,19 +46,16 @@ import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun PGPTool() {
-    var pubKeyInp by remember { mutableStateOf("") }
-    var plainTextInp by remember { mutableStateOf("") }
-    var secKeyInp by remember { mutableStateOf("") }
-    var passphraseInp by remember { mutableStateOf("") }
-    var cipherTextInp by remember { mutableStateOf("") }
     val scrollState = rememberScrollState()
 
+    var pubKeyInp by remember { mutableStateOf("") }
     var publicKey by remember { mutableStateOf<Result<PGPPublicKey>>(Result.failure(Exception("No key"))) }
     LaunchedEffect(pubKeyInp) {
         delay(250.milliseconds)
         publicKey = loadPublicKey(pubKeyInp)
     }
 
+    var plainTextInp by remember { mutableStateOf("") }
     var ciphertext by remember { mutableStateOf<Result<String>>(Result.failure(Exception("No public key"))) }
     LaunchedEffect(publicKey, plainTextInp) {
         delay(250.milliseconds)
@@ -69,7 +66,8 @@ fun PGPTool() {
         ciphertext = encryptMessage(pubKey, plainTextInp)
     }
 
-    var secretKeyrings by remember {
+    var secKeyInp by remember { mutableStateOf("") }
+    var secretKeyRings by remember {
         mutableStateOf<Result<BcPGPSecretKeyRingCollection>>(
             Result.failure(
                 Exception("No secret keyring")
@@ -78,17 +76,19 @@ fun PGPTool() {
     }
     LaunchedEffect(secKeyInp) {
         delay(250.milliseconds)
-        secretKeyrings = loadSecretKeys(secKeyInp)
+        secretKeyRings = loadSecretKeys(secKeyInp)
     }
 
+    var passphraseInp by remember { mutableStateOf("") }
+    var cipherTextInp by remember { mutableStateOf("") }
     var plaintext by remember { mutableStateOf<Result<String>>(Result.failure(Exception("No secret keyring"))) }
-    LaunchedEffect(secretKeyrings, cipherTextInp, passphraseInp) {
+    LaunchedEffect(secretKeyRings, cipherTextInp, passphraseInp) {
         delay(250.milliseconds)
-        val secKeyrings = secretKeyrings.getOrElse {
+        val secKeyRings = secretKeyRings.getOrElse {
             plaintext = Result.failure(Exception("No secret keyring"))
             return@LaunchedEffect
         }
-        plaintext = decryptMessage(secKeyrings, passphraseInp, cipherTextInp)
+        plaintext = decryptMessage(secKeyRings, passphraseInp, cipherTextInp)
     }
 
     Column(modifier = Modifier.verticalScroll(scrollState)) {
@@ -163,7 +163,7 @@ fun PGPTool() {
                 .padding(8.dp)
                 .fillMaxWidth()
         )
-        secretKeyrings.onFailure {
+        secretKeyRings.onFailure {
             Text(
                 text = "Invalid secret key: ${it.toString()}", modifier = Modifier
                     .padding(16.dp, 8.dp)
