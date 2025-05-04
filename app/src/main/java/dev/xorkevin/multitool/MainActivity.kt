@@ -60,7 +60,10 @@ object Route {
         data object Hash
 
         @Serializable
-        data object PGP
+        data object PGPEncrypt
+
+        @Serializable
+        data object PGPDecrypt
     }
 }
 
@@ -68,7 +71,8 @@ data class RouteEntry<T : Any>(val route: T, val name: String)
 
 val routes = listOf(
     RouteEntry(Route.Tool.Hash, "Hash"),
-    RouteEntry(Route.Tool.PGP, "PGP"),
+    RouteEntry(Route.Tool.PGPEncrypt, "PGP Encrypt"),
+    RouteEntry(Route.Tool.PGPDecrypt, "PGP Decrypt"),
 )
 
 @Composable
@@ -151,8 +155,11 @@ fun App() {
                     composable<Route.Tool.Hash> {
                         HashTool()
                     }
-                    composable<Route.Tool.PGP> {
-                        PGPTool()
+                    composable<Route.Tool.PGPEncrypt> {
+                        PGPEncryptTool()
+                    }
+                    composable<Route.Tool.PGPDecrypt> {
+                        PGPDecryptTool()
                     }
                 }
             }

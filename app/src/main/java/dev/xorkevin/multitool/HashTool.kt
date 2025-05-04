@@ -1,4 +1,7 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class,
+    ExperimentalCoroutinesApi::class
+)
 
 package dev.xorkevin.multitool
 
@@ -11,42 +14,33 @@ import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.update
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
-data class HashResult(val name: String, val value: String)
-
-val hashAlgs = listOf("SHA-256", "SHA-512")
-
 @Composable
-fun HashTool() {
+fun HashTool() = ViewModelScope(arrayOf(HashViewModel::class)) {
     val scrollState = rememberScrollState()
-    var inp by remember { mutableStateOf("") }
-    var hashes by remember { mutableStateOf(emptyList<HashResult>()) }
-    LaunchedEffect(inp) {
-        delay(250.milliseconds)
-        val inpBytes = inp.toByteArray()
-        hashes = hashAlgs.map {
-            HashResult(
-                name = it,
-                value = MessageDigest.getInstance(it).digest(inpBytes).toHexString()
-            )
-        }
-    }
+    val hashViewModel: HashViewModel = scopedViewModel()
+
+    val input by hashViewModel.input.collectAsStateWithLifecycle()
+    val hashes by hashViewModel.hashes.collectAsStateWithLifecycle(emptyList())
 
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         TextField(
-            value = inp,
-            onValueChange = { inp = it },
+            value = input,
+            onValueChange = { hashViewModel.updateInput(it) },
             modifier = Modifier
                 .padding(8.dp)
                 .fillMaxWidth()
@@ -62,6 +56,36 @@ fun HashTool() {
                     .padding(16.dp, 8.dp)
                     .fillMaxWidth()
             )
+        }
+    }
+}
+
+data class HashResult(val name: String, val value: String)
+
+class HashViewModel : ViewModel() {
+    private val _input = MutableStateFlow("")
+    val input = _input.asStateFlow()
+    fun updateInput(value: String) {
+        _input.update { value }
+    }
+
+    val hashes = input.mapLatest {
+        delay(250.milliseconds)
+        computeHashes(it)
+    }
+
+
+    private companion object {
+        private val hashAlgs = listOf("SHA-256", "SHA-512")
+
+        private fun computeHashes(value: String): List<HashResult> {
+            val valueBytes = value.toByteArray()
+            return hashAlgs.map {
+                HashResult(
+                    name = it,
+                    value = MessageDigest.getInstance(it).digest(valueBytes).toHexString()
+                )
+            }
         }
     }
 }

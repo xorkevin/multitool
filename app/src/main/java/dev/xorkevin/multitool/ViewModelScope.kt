@@ -26,7 +26,7 @@ import kotlin.reflect.full.isSubtypeOf
 import kotlin.reflect.typeOf
 import kotlin.uuid.ExperimentalUuidApi
 
-val LocalViewModelScopeContext: ProvidableCompositionLocal<ViewModelScopeContext?> =
+val LocalViewModelScopeContext: ProvidableCompositionLocal<ViewModelScopeContext<*>?> =
     staticCompositionLocalOf { null }
 
 @Composable
@@ -41,7 +41,7 @@ inline fun <reified T : ViewModel> scopedViewModel(): T {
 }
 
 @Composable
-fun ViewModelScope(vmClasses: Array<KClass<ViewModel>>, content: @Composable (() -> Unit)) {
+fun <T : ViewModel> ViewModelScope(vmClasses: Array<KClass<T>>, content: @Composable (() -> Unit)) {
     val activity = LocalActivity.current ?: throw IllegalStateException("No activity")
     val lifecycleOwner = LocalLifecycleOwner.current
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()
@@ -102,18 +102,18 @@ private class CompositionObserver(
 
 data class ViewModelStoreOwnerKey(private val v: Long)
 
-class ViewModelScopeContext(
-    vmClass: KClass<ViewModel>,
+class ViewModelScopeContext<T : ViewModel>(
+    vmClass: KClass<T>,
     private val key: ViewModelStoreOwnerKey,
-    private val parent: ViewModelScopeContext? = null,
+    private val parent: ViewModelScopeContext<*>? = null,
 ) {
     private val kType = vmClass.createType()
 
     fun getStoreOwnerKey(type: KType): ViewModelStoreOwnerKey? = getStoreOwnerKey(this, type)
 
-    companion object {
+    private companion object {
         private tailrec fun getStoreOwnerKey(
-            ctx: ViewModelScopeContext,
+            ctx: ViewModelScopeContext<*>,
             type: KType
         ): ViewModelStoreOwnerKey? =
             if (ctx.kType.isSubtypeOf(type)) {
