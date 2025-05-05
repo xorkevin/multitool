@@ -18,11 +18,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.update
 import org.bouncycastle.bcpg.KeyIdentifier
 import org.bouncycastle.openpgp.PGPEncryptedDataList
 import org.bouncycastle.openpgp.PGPException
@@ -43,101 +40,115 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun PGPDecryptTool() = ViewModelScope(arrayOf(PGPDecryptViewModel::class)) {
     val scrollState = rememberScrollState()
-    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
+    Column(modifier = Modifier.verticalScroll(scrollState)) {
+        PGPDecryptSecretKeyInput()
+        PGPDecryptCiphertextInput()
+        PGPDecryptPassphraseInput()
+        PGPDecryptSecretKeyDisplay()
+        PGPDecryptPlaintextDisplay()
+    }
+}
 
-    val inputSecretKey by pgpDecryptViewModel.inputSecretKey.collectAsStateWithLifecycle()
+@Composable
+fun PGPDecryptSecretKeyInput() {
+    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
+    var inputSecretKey by pgpDecryptViewModel.inputSecretKey.collectAsStateWithLifecycle()
+    TextField(
+        label = { Text(text = "ASCII armored secret key") },
+        value = inputSecretKey,
+        onValueChange = { inputSecretKey = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun PGPDecryptCiphertextInput() {
+    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
+    var inputCiphertext by pgpDecryptViewModel.inputCiphertext.collectAsStateWithLifecycle()
+    TextField(
+        label = { Text(text = "Ciphertext") },
+        value = inputCiphertext,
+        onValueChange = { inputCiphertext = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun PGPDecryptPassphraseInput() {
+    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
+    var inputPassphrase by pgpDecryptViewModel.inputPassphrase.collectAsStateWithLifecycle()
+    TextField(
+        label = { Text(text = "Passphrase") },
+        value = inputPassphrase,
+        onValueChange = { inputPassphrase = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun PGPDecryptSecretKeyDisplay() {
+    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
     val secretKeyRings by pgpDecryptViewModel.secretKeyRings.collectAsStateWithLifecycle(
         Result.failure(Exception("No secret keyring"))
     )
-    val inputPassphrase by pgpDecryptViewModel.inputPassphrase.collectAsStateWithLifecycle()
-    val inputCiphertext by pgpDecryptViewModel.inputCiphertext.collectAsStateWithLifecycle()
+    secretKeyRings.onFailure {
+        Text(
+            text = "Invalid secret key: ${it.toString()}",
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
+    }
+}
 
+@Composable
+fun PGPDecryptPlaintextDisplay() {
+    val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
     val plaintext by pgpDecryptViewModel.plaintext.collectAsStateWithLifecycle(
         Result.failure(Exception("No secret keyring"))
     )
-
-    Column(modifier = Modifier.verticalScroll(scrollState)) {
-        TextField(
-            label = { Text(text = "ASCII armored secret key") },
-            value = inputSecretKey,
-            onValueChange = { pgpDecryptViewModel.updateInputSecretKey(it) },
+    plaintext.onFailure {
+        Text(
+            text = "Failed decrypting: ${it.toString()}",
             modifier = Modifier
-                .padding(8.dp)
+                .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        TextField(
-            label = { Text(text = "Ciphertext") },
-            value = inputCiphertext,
-            onValueChange = { pgpDecryptViewModel.updateInputCiphertext(it) },
+    }
+    plaintext.onSuccess {
+        Text(
+            text = it,
+            fontFamily = FontFamily.Monospace,
             modifier = Modifier
-                .padding(8.dp)
+                .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        TextField(
-            label = { Text(text = "Passphrase") },
-            value = inputPassphrase,
-            onValueChange = { pgpDecryptViewModel.updateInputPassphrase(it) },
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth()
-        )
-        secretKeyRings.onFailure {
-            Text(
-                text = "Invalid secret key: ${it.toString()}", modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
-        plaintext.onFailure {
-            Text(
-                text = "Failed decrypting: ${it.toString()}", modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
-        plaintext.onSuccess {
-            Text(
-                text = it, fontFamily = FontFamily.Monospace, modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
     }
 }
 
 class PGPDecryptViewModel : ViewModel() {
-    private val _inputSecretKey = MutableStateFlow("")
-    val inputSecretKey = _inputSecretKey.asStateFlow()
-    fun updateInputSecretKey(value: String) {
-        _inputSecretKey.update { value }
-    }
-
-    val secretKeyRings = inputSecretKey.mapLatest {
+    val inputSecretKey = MutableViewModelStateFlow("")
+    val secretKeyRings = inputSecretKey.flow.mapLatest {
         delay(250.milliseconds)
         loadSecretKeys(it)
     }
-
-    private val _inputPassphrase = MutableStateFlow("")
-    val inputPassphrase = _inputPassphrase.asStateFlow()
-    fun updateInputPassphrase(value: String) {
-        _inputPassphrase.update { value }
-    }
-
-    private val _inputCiphertext = MutableStateFlow("")
-    val inputCiphertext = _inputCiphertext.asStateFlow()
-    fun updateInputCiphertext(value: String) {
-        _inputCiphertext.update { value }
-    }
-
-    val plaintext = secretKeyRings.combine(inputPassphrase) { a, b -> Pair(a, b) }
-        .combine(inputCiphertext) { (a, b), c -> Triple(a, b, c) }
-        .mapLatest { (secretKeyRings, inputPassphrase, inputCiphertext) ->
-            delay(250.milliseconds)
-            val secKeyRings = secretKeyRings.getOrElse {
-                return@mapLatest Result.failure(Exception("No secret keyring"))
-            }
-            decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
+    val inputPassphrase = MutableViewModelStateFlow("")
+    val inputCiphertext = MutableViewModelStateFlow("")
+    val plaintext = combine(secretKeyRings, inputPassphrase.flow, inputCiphertext.flow) { a, b, c ->
+        Triple(a, b, c)
+    }.mapLatest { (secretKeyRings, inputPassphrase, inputCiphertext) ->
+        delay(250.milliseconds)
+        val secKeyRings = secretKeyRings.getOrElse {
+            return@mapLatest Result.failure(Exception("No secret keyring"))
         }
+        decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
+    }
 }
 
 internal fun decryptMessage(

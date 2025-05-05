@@ -22,58 +22,58 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.update
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
 fun HashTool() = ViewModelScope(arrayOf(HashViewModel::class)) {
     val scrollState = rememberScrollState()
-    val hashViewModel: HashViewModel = scopedViewModel()
-
-    val input by hashViewModel.input.collectAsStateWithLifecycle()
-    val hashes by hashViewModel.hashes.collectAsStateWithLifecycle(emptyList())
-
     Column(modifier = Modifier.verticalScroll(scrollState)) {
-        TextField(
-            value = input,
-            onValueChange = { hashViewModel.updateInput(it) },
-            modifier = Modifier
-                .padding(8.dp)
+        HashInput()
+        HashDisplay()
+    }
+}
+
+@Composable
+fun HashInput() {
+    val hashViewModel: HashViewModel = scopedViewModel()
+    var input by hashViewModel.input.collectAsStateWithLifecycle()
+    TextField(
+        value = input,
+        onValueChange = { input = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun HashDisplay() {
+    val hashViewModel: HashViewModel = scopedViewModel()
+    val hashes by hashViewModel.hashes.collectAsStateWithLifecycle(emptyList())
+    hashes.forEach {
+        Text(
+            text = it.name, modifier = Modifier
+                .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        hashes.forEach {
-            Text(
-                text = it.name, modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-            Text(
-                text = it.value, fontFamily = FontFamily.Monospace, modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
+        Text(
+            text = it.value, fontFamily = FontFamily.Monospace, modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
     }
 }
 
 data class HashResult(val name: String, val value: String)
 
 class HashViewModel : ViewModel() {
-    private val _input = MutableStateFlow("")
-    val input = _input.asStateFlow()
-    fun updateInput(value: String) {
-        _input.update { value }
-    }
-
-    val hashes = input.mapLatest {
+    val input = MutableViewModelStateFlow("")
+    val hashes = input.flow.mapLatest {
         delay(250.milliseconds)
         computeHashes(it)
     }
-
 
     private companion object {
         private val hashAlgs = listOf("SHA-256", "SHA-512")

@@ -9,6 +9,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.RememberObserver
+import androidx.compose.runtime.State
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
@@ -18,8 +19,12 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlin.reflect.KClass
+import kotlin.reflect.KProperty
 import kotlin.reflect.KType
 import kotlin.reflect.full.createType
 import kotlin.reflect.full.isSubtypeOf
@@ -146,4 +151,26 @@ class StoreOwnerViewModel : ViewModel() {
 
 private class ScopedViewModelStoreOwner : ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
+}
+
+class MutableViewModelState<T>(private val state: State<T>, private val flow: MutableStateFlow<T>) {
+    var value
+        get(): T = state.value
+        set(v) {
+            flow.value = v
+        }
+
+    operator fun getValue(thisRef: Any?, property: KProperty<*>): T = value
+    operator fun setValue(thisRef: Any?, property: KProperty<*>, v: T) {
+        value = v
+    }
+}
+
+class MutableViewModelStateFlow<T>(initValue: T) {
+    private val _flow = MutableStateFlow(initValue)
+    val flow = _flow.asStateFlow()
+
+    @Composable
+    fun collectAsStateWithLifecycle(): MutableViewModelState<T> =
+        MutableViewModelState(flow.collectAsStateWithLifecycle(), _flow)
 }

@@ -16,15 +16,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.mapLatest
-import kotlinx.coroutines.flow.update
-import kotlinx.coroutines.launch
 import org.bouncycastle.bcpg.ArmoredOutputStream
 import org.bouncycastle.internal.asn1.cryptlib.CryptlibObjectIdentifiers
 import org.bouncycastle.openpgp.PGPEncryptedDataGenerator
@@ -45,77 +40,87 @@ import kotlin.time.Duration.Companion.milliseconds
 @Composable
 fun PGPEncryptTool() = ViewModelScope(arrayOf(PGPEncryptViewModel::class)) {
     val scrollState = rememberScrollState()
-    val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
+    Column(modifier = Modifier.verticalScroll(scrollState)) {
+        PGPEncryptPublicKeyInput()
+        PGPEncryptPlaintextInput()
+        PGPEncryptPublicKeyDisplay()
+        PGPEncryptCiphertextDisplay()
+    }
+}
 
-    val inputPublicKey by pgpEncryptViewModel.inputPublicKey.collectAsStateWithLifecycle()
-    val inputPlaintext by pgpEncryptViewModel.inputPlaintext.collectAsStateWithLifecycle()
+@Composable
+fun PGPEncryptPublicKeyInput() {
+    val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
+    var inputPublicKey by pgpEncryptViewModel.inputPublicKey.collectAsStateWithLifecycle()
+    TextField(
+        label = { Text(text = "ASCII armored public key") },
+        value = inputPublicKey,
+        onValueChange = { inputPublicKey = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun PGPEncryptPlaintextInput() {
+    val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
+    var inputPlaintext by pgpEncryptViewModel.inputPlaintext.collectAsStateWithLifecycle()
+    TextField(
+        label = { Text(text = "Plaintext") },
+        value = inputPlaintext,
+        onValueChange = { inputPlaintext = it },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth()
+    )
+}
+
+@Composable
+fun PGPEncryptPublicKeyDisplay() {
+    val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
     val publicKey by pgpEncryptViewModel.publicKey.collectAsStateWithLifecycle(
         Result.failure(Exception("No public key"))
     )
+    publicKey.onFailure {
+        Text(
+            text = "Invalid public key: ${it.toString()}", modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
+    }
+}
+
+@Composable
+fun PGPEncryptCiphertextDisplay() {
+    val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
     val ciphertext by pgpEncryptViewModel.ciphertext.collectAsStateWithLifecycle(
         Result.failure(Exception("No public key"))
     )
-
-    Column(modifier = Modifier.verticalScroll(scrollState)) {
-        TextField(
-            label = { Text(text = "ASCII armored public key") },
-            value = inputPublicKey,
-            onValueChange = { pgpEncryptViewModel.updateInputPublicKey(it) },
-            modifier = Modifier
-                .padding(8.dp)
+    ciphertext.onFailure {
+        Text(
+            text = "Failed encrypting: ${it.toString()}", modifier = Modifier
+                .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        TextField(
-            label = { Text(text = "Plaintext") },
-            value = inputPlaintext,
-            onValueChange = { pgpEncryptViewModel.updateInputPlaintext(it) },
-            modifier = Modifier
-                .padding(8.dp)
+    }
+    ciphertext.onSuccess {
+        Text(
+            text = it, fontFamily = FontFamily.Monospace, modifier = Modifier
+                .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        publicKey.onFailure {
-            Text(
-                text = "Invalid public key: ${it.toString()}", modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
-        ciphertext.onFailure {
-            Text(
-                text = "Failed encrypting: ${it.toString()}", modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
-        ciphertext.onSuccess {
-            Text(
-                text = it, fontFamily = FontFamily.Monospace, modifier = Modifier
-                    .padding(16.dp, 8.dp)
-                    .fillMaxWidth()
-            )
-        }
     }
 }
 
 class PGPEncryptViewModel : ViewModel() {
-    private val _inputPublicKey = MutableStateFlow("")
-    val inputPublicKey = _inputPublicKey.asStateFlow()
-    fun updateInputPublicKey(value: String) {
-        _inputPublicKey.update { value }
-    }
-
-    val publicKey = inputPublicKey.mapLatest {
+    val inputPublicKey = MutableViewModelStateFlow("")
+    val publicKey = inputPublicKey.flow.mapLatest {
         delay(250.milliseconds)
         loadPublicKey(it)
     }
-
-    private val _inputPlaintext = MutableStateFlow("")
-    val inputPlaintext = _inputPlaintext.asStateFlow()
-    fun updateInputPlaintext(value: String) {
-        _inputPlaintext.update { value }
-    }
-
-    val ciphertext = publicKey.combine(inputPlaintext) { a, b -> Pair(a, b) }
+    val inputPlaintext = MutableViewModelStateFlow("")
+    val ciphertext = combine(publicKey, inputPlaintext.flow) { a, b -> Pair(a, b) }
         .mapLatest { (publicKey, inputPlaintext) ->
             delay(250.milliseconds)
             val pubKey = publicKey.getOrElse {
@@ -123,12 +128,6 @@ class PGPEncryptViewModel : ViewModel() {
             }
             encryptMessage(pubKey, inputPlaintext)
         }
-
-    init {
-        viewModelScope.launch {
-
-        }
-    }
 }
 
 internal fun encryptMessage(publicKey: PGPPublicKey, message: String): Result<String> {
