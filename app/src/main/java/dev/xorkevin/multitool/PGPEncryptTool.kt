@@ -38,7 +38,7 @@ import kotlin.time.Duration.Companion.milliseconds
 
 
 @Composable
-fun PGPEncryptTool() = ViewModelScope(arrayOf(PGPEncryptViewModel::class)) {
+fun PGPEncryptTool() = ViewModelScope(PGPEncryptViewModel::class) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         PGPEncryptPublicKeyInput()

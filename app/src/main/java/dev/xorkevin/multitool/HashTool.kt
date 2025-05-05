@@ -27,7 +27,7 @@ import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun HashTool() = ViewModelScope(arrayOf(HashViewModel::class)) {
+fun HashTool() = ViewModelScope(HashViewModel::class) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         HashInput()

@@ -6,19 +6,15 @@ import android.app.Activity
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.ProvidableCompositionLocal
 import androidx.compose.runtime.RememberObserver
 import androidx.compose.runtime.State
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.lifecycle.DefaultLifecycleObserver
-import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
-import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -46,22 +42,15 @@ inline fun <reified T : ViewModel> scopedViewModel(): T {
 }
 
 @Composable
-fun <T : ViewModel> ViewModelScope(vmClasses: Array<KClass<T>>, content: @Composable (() -> Unit)) {
+fun <T : ViewModel> ViewModelScope(vararg vmClasses: KClass<T>, content: @Composable (() -> Unit)) {
     val activity = LocalActivity.current ?: throw IllegalStateException("No activity")
-    val lifecycleOwner = LocalLifecycleOwner.current
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()
-    val id = ViewModelStoreOwnerKey(currentCompositeKeyHashCode)
+    val key = ViewModelStoreOwnerKey(currentCompositeKeyHashCode)
     val currentContext = LocalViewModelScopeContext.current
     val scopeContext = remember(currentContext, *vmClasses) {
-        vmClasses.fold(currentContext) { acc, vmClass -> ViewModelScopeContext(vmClass, id, acc) }
+        vmClasses.fold(currentContext) { acc, vmClass -> ViewModelScopeContext(vmClass, key, acc) }
     }
-    val observer = remember { CompositionObserver(storeOwnerViewModel, id, activity) }
-    DisposableEffect(lifecycleOwner, observer) {
-        lifecycleOwner.lifecycle.addObserver(observer)
-        onDispose {
-            lifecycleOwner.lifecycle.removeObserver(observer)
-        }
-    }
+    remember { CompositionObserver(storeOwnerViewModel, key, activity) }
     CompositionLocalProvider(LocalViewModelScopeContext provides scopeContext, content)
 }
 
@@ -69,39 +58,21 @@ private class CompositionObserver(
     private val storeOwnerViewModel: StoreOwnerViewModel,
     private val scopeKey: ViewModelStoreOwnerKey,
     private val activity: Activity,
-) : RememberObserver, DefaultLifecycleObserver {
-    private var isChangingConfigurations = false
-
+) : RememberObserver {
     override fun onRemembered() {
         // Nothing to do
     }
 
     override fun onForgotten() {
-        if (!isChangingConfigurations) {
+        if (!activity.isChangingConfigurations) {
             storeOwnerViewModel.disposeStoreOwner(scopeKey)
         }
     }
 
     override fun onAbandoned() {
-        if (!isChangingConfigurations) {
+        if (!activity.isChangingConfigurations) {
             storeOwnerViewModel.disposeStoreOwner(scopeKey)
         }
-    }
-
-    override fun onCreate(owner: LifecycleOwner) {
-        isChangingConfigurations = false
-    }
-
-    override fun onStart(owner: LifecycleOwner) {
-        isChangingConfigurations = false
-    }
-
-    override fun onStop(owner: LifecycleOwner) {
-        isChangingConfigurations = activity.isChangingConfigurations
-    }
-
-    override fun onDestroy(owner: LifecycleOwner) {
-        isChangingConfigurations = activity.isChangingConfigurations
     }
 }
 
@@ -131,7 +102,7 @@ class ViewModelScopeContext<T : ViewModel>(
 }
 
 class StoreOwnerViewModel : ViewModel() {
-    private val map = mutableMapOf<ViewModelStoreOwnerKey, ViewModelStoreOwner>()
+    private val map = mutableMapOf<ViewModelStoreOwnerKey, ScopedViewModelStoreOwner>()
 
     override fun onCleared() {
         map.values.forEach {

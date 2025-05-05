@@ -38,7 +38,7 @@ import java.io.IOException
 import kotlin.time.Duration.Companion.milliseconds
 
 @Composable
-fun PGPDecryptTool() = ViewModelScope(arrayOf(PGPDecryptViewModel::class)) {
+fun PGPDecryptTool() = ViewModelScope(PGPDecryptViewModel::class) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         PGPDecryptSecretKeyInput()
