@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 
 package dev.xorkevin.multitool
 
@@ -16,10 +16,15 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import org.bouncycastle.bcpg.KeyIdentifier
 import org.bouncycastle.openpgp.PGPEncryptedDataList
 import org.bouncycastle.openpgp.PGPException
@@ -94,9 +99,7 @@ fun PGPDecryptPassphraseInput() {
 @Composable
 fun PGPDecryptSecretKeyDisplay() {
     val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
-    val secretKeyRings by pgpDecryptViewModel.secretKeyRings.collectAsStateWithLifecycle(
-        Result.failure(Exception("No secret keyring"))
-    )
+    val secretKeyRings by pgpDecryptViewModel.secretKeyRings.collectAsStateWithLifecycle()
     secretKeyRings.onFailure {
         Text(
             text = "Invalid secret key: ${it.toString()}",
@@ -110,9 +113,7 @@ fun PGPDecryptSecretKeyDisplay() {
 @Composable
 fun PGPDecryptPlaintextDisplay() {
     val pgpDecryptViewModel: PGPDecryptViewModel = scopedViewModel()
-    val plaintext by pgpDecryptViewModel.plaintext.collectAsStateWithLifecycle(
-        Result.failure(Exception("No secret keyring"))
-    )
+    val plaintext by pgpDecryptViewModel.plaintext.collectAsStateWithLifecycle()
     plaintext.onFailure {
         Text(
             text = "Failed decrypting: ${it.toString()}",
@@ -137,10 +138,18 @@ class PGPDecryptViewModel : ViewModel() {
     val secretKeyRings = inputSecretKey.flow.mapLatest {
         delay(250.milliseconds)
         loadSecretKeys(it)
-    }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(),
+        Result.failure(Exception("No secret keyring"))
+    )
     val inputPassphrase = MutableViewModelStateFlow("")
     val inputCiphertext = MutableViewModelStateFlow("")
-    val plaintext = combine(secretKeyRings, inputPassphrase.flow, inputCiphertext.flow) { a, b, c ->
+    val plaintext = combine(
+        secretKeyRings,
+        inputPassphrase.flow.debounce(250.milliseconds),
+        inputCiphertext.flow.debounce(250.milliseconds),
+    ) { a, b, c ->
         Triple(a, b, c)
     }.mapLatest { (secretKeyRings, inputPassphrase, inputCiphertext) ->
         delay(250.milliseconds)
@@ -148,7 +157,11 @@ class PGPDecryptViewModel : ViewModel() {
             return@mapLatest Result.failure(Exception("No secret keyring"))
         }
         decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
-    }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(),
+        Result.failure(Exception("No secret keyring"))
+    )
 }
 
 internal fun decryptMessage(
@@ -173,14 +186,10 @@ internal fun decryptMessage(
                 ?: return@firstNotNullOfOrNull null
             try {
                 val privateKey = secretKey.extractPrivateKey(
-                    BcPBESecretKeyDecryptorBuilder(BcPGPDigestCalculatorProvider()).build(
-                        passphrase.toCharArray()
-                    )
+                    BcPBESecretKeyDecryptorBuilder(BcPGPDigestCalculatorProvider()).build(passphrase.toCharArray())
                 )
                 val dataStream = BcPGPObjectFactory(
-                    encData.getDataStream(
-                        BcPublicKeyDataDecryptorFactory(privateKey)
-                    )
+                    encData.getDataStream(BcPublicKeyDataDecryptorFactory(privateKey)),
                 )
                 dataStream.firstNotNullOfOrNull {
                     if (it !is PGPLiteralData) {
@@ -205,21 +214,14 @@ internal fun decryptMessage(
 private fun findSecretKey(
     keyringCollection: BcPGPSecretKeyRingCollection,
     identifier: KeyIdentifier,
-): PGPSecretKey? {
-    return keyringCollection.firstNotNullOfOrNull {
-        it.getSecretKey(identifier)
-    }
-}
+): PGPSecretKey? =
+    keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
 
 internal fun loadSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
     return try {
         Result.success(
             BcPGPSecretKeyRingCollection(
-                PGPUtil.getDecoderStream(
-                    ByteArrayInputStream(
-                        armoredSecretKey.toByteArray()
-                    )
-                )
+                PGPUtil.getDecoderStream(ByteArrayInputStream(armoredSecretKey.toByteArray())),
             )
         )
     } catch (e: PGPException) {

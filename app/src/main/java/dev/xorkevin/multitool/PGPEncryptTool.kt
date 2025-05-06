@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalCoroutinesApi::class)
+@file:OptIn(ExperimentalCoroutinesApi::class, FlowPreview::class)
 
 package dev.xorkevin.multitool
 
@@ -16,12 +16,16 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import org.bouncycastle.bcpg.ArmoredOutputStream
-import org.bouncycastle.internal.asn1.cryptlib.CryptlibObjectIdentifiers
 import org.bouncycastle.openpgp.PGPEncryptedDataGenerator
 import org.bouncycastle.openpgp.PGPException
 import org.bouncycastle.openpgp.PGPLiteralDataGenerator
@@ -79,9 +83,7 @@ fun PGPEncryptPlaintextInput() {
 @Composable
 fun PGPEncryptPublicKeyDisplay() {
     val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
-    val publicKey by pgpEncryptViewModel.publicKey.collectAsStateWithLifecycle(
-        Result.failure(Exception("No public key"))
-    )
+    val publicKey by pgpEncryptViewModel.publicKey.collectAsStateWithLifecycle()
     publicKey.onFailure {
         Text(
             text = "Invalid public key: ${it.toString()}", modifier = Modifier
@@ -94,9 +96,7 @@ fun PGPEncryptPublicKeyDisplay() {
 @Composable
 fun PGPEncryptCiphertextDisplay() {
     val pgpEncryptViewModel: PGPEncryptViewModel = scopedViewModel()
-    val ciphertext by pgpEncryptViewModel.ciphertext.collectAsStateWithLifecycle(
-        Result.failure(Exception("No public key"))
-    )
+    val ciphertext by pgpEncryptViewModel.ciphertext.collectAsStateWithLifecycle()
     ciphertext.onFailure {
         Text(
             text = "Failed encrypting: ${it.toString()}", modifier = Modifier
@@ -118,28 +118,32 @@ class PGPEncryptViewModel : ViewModel() {
     val publicKey = inputPublicKey.flow.mapLatest {
         delay(250.milliseconds)
         loadPublicKey(it)
-    }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(),
+        Result.failure(Exception("No public key"))
+    )
     val inputPlaintext = MutableViewModelStateFlow("")
-    val ciphertext = combine(publicKey, inputPlaintext.flow) { a, b -> Pair(a, b) }
-        .mapLatest { (publicKey, inputPlaintext) ->
-            delay(250.milliseconds)
-            val pubKey = publicKey.getOrElse {
-                return@mapLatest Result.failure(Exception("No public key"))
-            }
-            encryptMessage(pubKey, inputPlaintext)
+    val ciphertext = combine(publicKey, inputPlaintext.flow.debounce(250.milliseconds)) { a, b ->
+        Pair(a, b)
+    }.mapLatest { (publicKey, inputPlaintext) ->
+        delay(250.milliseconds)
+        val pubKey = publicKey.getOrElse {
+            return@mapLatest Result.failure(Exception("No public key"))
         }
+        encryptMessage(pubKey, inputPlaintext)
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(),
+        Result.failure(Exception("No public key"))
+    )
 }
 
 internal fun encryptMessage(publicKey: PGPPublicKey, message: String): Result<String> {
-    CryptlibObjectIdentifiers.cryptlib.toString()
     val plaintext = message.toByteArray()
     val literalData = ByteArrayOutputStream()
     PGPLiteralDataGenerator().open(
-        literalData,
-        PGPLiteralDataGenerator.UTF8,
-        "",
-        plaintext.size.toLong(),
-        Date()
+        literalData, PGPLiteralDataGenerator.UTF8, "", plaintext.size.toLong(), Date()
     ).use {
         it.write(plaintext)
     }
@@ -159,11 +163,7 @@ internal fun encryptMessage(publicKey: PGPPublicKey, message: String): Result<St
 internal fun loadPublicKey(armoredPublicKey: String): Result<PGPPublicKey> {
     val keyringCollection = try {
         BcPGPPublicKeyRingCollection(
-            PGPUtil.getDecoderStream(
-                ByteArrayInputStream(
-                    armoredPublicKey.toByteArray()
-                )
-            )
+            PGPUtil.getDecoderStream(ByteArrayInputStream(armoredPublicKey.toByteArray()))
         )
     } catch (e: PGPException) {
         return Result.failure(e)
@@ -180,4 +180,3 @@ internal fun loadPublicKey(armoredPublicKey: String): Result<PGPPublicKey> {
     }
     return Result.failure(Exception("No encryption key found"))
 }
-

@@ -20,9 +20,12 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.stateIn
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -51,7 +54,7 @@ fun HashInput() {
 @Composable
 fun HashDisplay() {
     val hashViewModel: HashViewModel = scopedViewModel()
-    val hashes by hashViewModel.hashes.collectAsStateWithLifecycle(emptyList())
+    val hashes by hashViewModel.hashes.collectAsStateWithLifecycle()
     hashes.forEach {
         Text(
             text = it.name, modifier = Modifier
@@ -73,7 +76,7 @@ class HashViewModel : ViewModel() {
     val hashes = input.flow.mapLatest {
         delay(250.milliseconds)
         computeHashes(it)
-    }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), computeHashes(""))
 
     private companion object {
         private val hashAlgs = listOf("SHA-256", "SHA-512")

@@ -55,15 +55,15 @@ class PGPToolTest {
     @Test
     fun encryptAndDecryptMessage() {
         val publicKey = loadPublicKey(testPublicKey).getOrThrow()
-        val secretKeyrings = loadSecretKeys(testPrivateKey).getOrThrow()
+        val secretKeyRings = loadSecretKeys(testPrivateKey).getOrThrow()
         val ciphertext = encryptMessage(publicKey, "test message").getOrThrow()
         Assert.assertEquals(
             "test message",
-            decryptMessage(secretKeyrings, testPassphrase, ciphertext).getOrThrow()
+            decryptMessage(secretKeyRings, testPassphrase, ciphertext).getOrThrow()
         )
         Assert.assertEquals(
             "hello world",
-            decryptMessage(secretKeyrings, testPassphrase, testCiphertext).getOrThrow()
+            decryptMessage(secretKeyRings, testPassphrase, testCiphertext).getOrThrow()
         )
     }
 }
