@@ -5,6 +5,7 @@
 
 package dev.xorkevin.multitool
 
+import android.content.Context
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
 import androidx.camera.core.Preview
@@ -22,20 +23,22 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.LifecycleOwner
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.update
 
 @Composable
 fun QRScannerTool() {
@@ -66,26 +69,35 @@ fun QRScannerTool() {
 
 @Composable
 fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
+    val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
-    var surfaceRequest by remember { mutableStateOf<SurfaceRequest?>(null) }
+    val surfaceRequest by qrScannerViewModel.surfaceRequest.collectAsStateWithLifecycle()
     LaunchedEffect(lifecycleOwner) {
-        val cameraProvider = ProcessCameraProvider.awaitInstance(context.applicationContext)
-        val cameraPreviewUseCase = Preview.Builder().build().apply {
-            setSurfaceProvider { surfaceRequest = it }
-        }
-        cameraProvider.bindToLifecycle(lifecycleOwner, DEFAULT_BACK_CAMERA, cameraPreviewUseCase)
-        try {
-            awaitCancellation()
-        } finally {
-            surfaceRequest = null
-            cameraProvider.unbindAll()
-        }
+        qrScannerViewModel.bindCamera(context.applicationContext, lifecycleOwner)
     }
     surfaceRequest?.let {
-        CameraXViewfinder(surfaceRequest = it, modifier = Modifier.fillMaxWidth())
+        CameraXViewfinder(surfaceRequest = it)
     }
 }
 
 class QRScannerViewModel : ViewModel() {
+    private val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
+    val surfaceRequest: StateFlow<SurfaceRequest?> = _surfaceRequest
+
+    private val cameraPreviewUseCase = Preview.Builder().build().apply {
+        setSurfaceProvider { newSurfaceRequest ->
+            _surfaceRequest.update { newSurfaceRequest }
+        }
+    }
+
+    suspend fun bindCamera(appContext: Context, lifecycleOwner: LifecycleOwner) {
+        val cameraProvider = ProcessCameraProvider.awaitInstance(appContext)
+        cameraProvider.bindToLifecycle(lifecycleOwner, DEFAULT_BACK_CAMERA, cameraPreviewUseCase)
+        try {
+            awaitCancellation()
+        } finally {
+            cameraProvider.unbindAll()
+        }
+    }
 }
