@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import org.bouncycastle.bcpg.KeyIdentifier
 import org.bouncycastle.openpgp.PGPEncryptedDataList
 import org.bouncycastle.openpgp.PGPException
@@ -137,7 +139,9 @@ class PGPDecryptViewModel : ViewModel() {
     val inputSecretKey = MutableViewModelStateFlow("")
     val secretKeyRings = inputSecretKey.flow.mapLatest {
         delay(250.milliseconds)
-        loadSecretKeys(it)
+        withContext(Dispatchers.Default) {
+            loadSecretKeys(it)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),
@@ -156,7 +160,9 @@ class PGPDecryptViewModel : ViewModel() {
         val secKeyRings = secretKeyRings.getOrElse {
             return@mapLatest Result.failure(Exception("No secret keyring"))
         }
-        decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
+        withContext(Dispatchers.Default) {
+            decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),

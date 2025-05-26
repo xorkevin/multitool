@@ -17,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
@@ -25,6 +26,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import org.bouncycastle.bcpg.ArmoredOutputStream
 import org.bouncycastle.openpgp.PGPEncryptedDataGenerator
 import org.bouncycastle.openpgp.PGPException
@@ -117,7 +119,9 @@ class PGPEncryptViewModel : ViewModel() {
     val inputPublicKey = MutableViewModelStateFlow("")
     val publicKey = inputPublicKey.flow.mapLatest {
         delay(250.milliseconds)
-        loadPublicKey(it)
+        withContext(Dispatchers.Default) {
+            loadPublicKey(it)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),
@@ -131,7 +135,9 @@ class PGPEncryptViewModel : ViewModel() {
         val pubKey = publicKey.getOrElse {
             return@mapLatest Result.failure(Exception("No public key"))
         }
-        encryptMessage(pubKey, inputPlaintext)
+        withContext(Dispatchers.Default) {
+            encryptMessage(pubKey, inputPlaintext)
+        }
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),

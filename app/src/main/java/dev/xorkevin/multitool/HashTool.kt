@@ -21,11 +21,13 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.withContext
 import java.security.MessageDigest
 import kotlin.time.Duration.Companion.milliseconds
 
@@ -75,7 +77,9 @@ class HashViewModel : ViewModel() {
     val input = MutableViewModelStateFlow("")
     val hashes = input.flow.mapLatest {
         delay(250.milliseconds)
-        computeHashes(it)
+        withContext(Dispatchers.Default) {
+            computeHashes(it)
+        }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), computeHashes(""))
 
     private companion object {

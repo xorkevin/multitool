@@ -5,14 +5,18 @@
 
 package dev.xorkevin.multitool
 
-import android.content.Context
 import androidx.camera.compose.CameraXViewfinder
-import androidx.camera.core.CameraControl
+import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+import androidx.camera.core.CameraState
 import androidx.camera.core.FocusMeteringAction
+import androidx.camera.core.ImageAnalysis
+import androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.SurfaceRequest
+import androidx.camera.core.resolutionselector.ResolutionSelector
+import androidx.camera.core.resolutionselector.ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
@@ -40,7 +44,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.takeOrElse
@@ -57,7 +60,9 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -98,7 +103,13 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
     val lifecycleOwner = LocalLifecycleOwner.current
     val surfaceRequest by qrScannerViewModel.surfaceRequest.collectAsStateWithLifecycle()
     LaunchedEffect(lifecycleOwner) {
-        qrScannerViewModel.bindCamera(context.applicationContext, lifecycleOwner)
+        val cameraProvider = ProcessCameraProvider.awaitInstance(context.applicationContext)
+        qrScannerViewModel.bindCamera(cameraProvider, lifecycleOwner)
+        try {
+            awaitCancellation()
+        } finally {
+            cameraProvider.unbindAll()
+        }
     }
 
     var autofocusPoint by remember { mutableStateOf(false to Offset.Unspecified) }
@@ -126,7 +137,6 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                 enter = fadeIn(),
                 exit = fadeOut(),
                 modifier = Modifier
-                    .align(Alignment.TopStart)
                     .offset { autofocusPoint.second.takeOrElse { Offset.Zero }.round() }
                     .offset((-24).dp, (-24).dp)
             ) {
@@ -145,8 +155,8 @@ class QRScannerViewModel : ViewModel() {
     private val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
     val surfaceRequest: StateFlow<SurfaceRequest?> = _surfaceRequest
 
+    private var camera: Camera? = null
     private var surfacePointFactory: SurfaceOrientedMeteringPointFactory? = null
-    private var cameraControl: CameraControl? = null
 
     private val cameraPreviewUseCase = Preview.Builder().build().apply {
         setSurfaceProvider { newSurfaceRequest ->
@@ -158,25 +168,32 @@ class QRScannerViewModel : ViewModel() {
         }
     }
 
-    suspend fun bindCamera(appContext: Context, lifecycleOwner: LifecycleOwner) {
-        val cameraProvider = ProcessCameraProvider.awaitInstance(appContext)
-        val camera = cameraProvider.bindToLifecycle(
+    private val executor = Dispatchers.Default.asExecutor()
+    private val analysisUseCase = ImageAnalysis.Builder()
+        .setBackpressureStrategy(STRATEGY_KEEP_ONLY_LATEST)
+        .setResolutionSelector(
+            ResolutionSelector.Builder()
+                .setAllowedResolutionMode(PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                .build()
+        )
+        .build().apply {
+            setAnalyzer(executor) { }
+        }
+
+    fun bindCamera(cameraProvider: ProcessCameraProvider, lifecycleOwner: LifecycleOwner) {
+        camera = cameraProvider.bindToLifecycle(
             lifecycleOwner,
             DEFAULT_BACK_CAMERA,
             cameraPreviewUseCase
         )
-        cameraControl = camera.cameraControl
-        try {
-            awaitCancellation()
-        } finally {
-            cameraProvider.unbindAll()
-            cameraControl = null
-        }
     }
 
     fun tapToFocus(coordinates: Offset) {
+        val camera = camera ?: return
+        val cameraState = camera.cameraInfo.cameraState.value ?: return
+        if (cameraState.type != CameraState.Type.OPEN) return
         val point = surfacePointFactory?.createPoint(coordinates.x, coordinates.y) ?: return
         val meteringAction = FocusMeteringAction.Builder(point).build()
-        cameraControl?.startFocusAndMetering(meteringAction)
+        camera.cameraControl.startFocusAndMetering(meteringAction)
     }
 }
