@@ -5,19 +5,19 @@
 
 package dev.xorkevin.multitool
 
-import android.graphics.ImageFormat.YUV_420_888
+import android.graphics.ImageFormat
+import android.util.Size
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Camera
-import androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
+import androidx.camera.core.CameraSelector
 import androidx.camera.core.CameraState
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
-import androidx.camera.core.ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST
 import androidx.camera.core.Preview
 import androidx.camera.core.SurfaceOrientedMeteringPointFactory
 import androidx.camera.core.SurfaceRequest
 import androidx.camera.core.resolutionselector.ResolutionSelector
-import androidx.camera.core.resolutionselector.ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE
+import androidx.camera.core.resolutionselector.ResolutionStrategy
 import androidx.camera.lifecycle.ProcessCameraProvider
 import androidx.camera.lifecycle.awaitInstance
 import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
@@ -282,28 +282,38 @@ class QRScannerViewModel : ViewModel() {
     private val _scanResult = MutableStateFlow<ScanResult?>(null)
     val scanResult = _scanResult.asStateFlow()
 
+    var imageBuffer = ByteArray(0)
     private val executor = Dispatchers.Default.asExecutor()
     private val analysisUseCase = ImageAnalysis.Builder()
-        .setBackpressureStrategy(STRATEGY_KEEP_ONLY_LATEST)
+        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
         .setResolutionSelector(
             ResolutionSelector.Builder()
-                .setAllowedResolutionMode(PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                .setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                .setResolutionStrategy(
+                    ResolutionStrategy(
+                        Size(1600, 1200),
+                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                    )
+                )
                 .build()
         )
         .build().apply {
             setAnalyzer(executor) { image ->
                 image.use {
-                    if (image.format != YUV_420_888) return@use
+                    if (image.format != ImageFormat.YUV_420_888) return@use
                     val plane = image.planes[0]
                     val buffer = plane.buffer
                     val pos = buffer.position()
-                    val buf = ByteArray(buffer.remaining())
-                    buffer.get(buf)
+                    val targetSize = buffer.remaining()
+                    if (imageBuffer.size < targetSize) {
+                        imageBuffer = ByteArray(targetSize)
+                    }
+                    buffer.get(imageBuffer)
                     buffer.position(pos)
                     val bitmap = BinaryBitmap(
                         HybridBinarizer(
                             PlanarYUVLuminanceSource(
-                                buf,
+                                imageBuffer,
                                 plane.rowStride,
                                 image.height,
                                 0,
@@ -340,7 +350,7 @@ class QRScannerViewModel : ViewModel() {
     fun bindCamera(cameraProvider: ProcessCameraProvider, lifecycleOwner: LifecycleOwner) {
         camera = cameraProvider.bindToLifecycle(
             lifecycleOwner,
-            DEFAULT_BACK_CAMERA,
+            CameraSelector.DEFAULT_BACK_CAMERA,
             cameraPreviewUseCase,
             analysisUseCase,
         )
