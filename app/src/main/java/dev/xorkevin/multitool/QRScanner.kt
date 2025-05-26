@@ -29,6 +29,7 @@ import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -114,6 +115,7 @@ fun QRScannerTool() {
 @Composable
 fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
     val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
+
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val surfaceRequest by qrScannerViewModel.surfaceRequest.collectAsStateWithLifecycle()
@@ -142,6 +144,16 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
     }
 
     val scanResult by qrScannerViewModel.scanResult.collectAsStateWithLifecycle()
+    var showScanResult by remember { mutableStateOf(false) }
+    LaunchedEffect(scanResult) {
+        if (scanResult == null) {
+            showScanResult = false
+            return@LaunchedEffect
+        }
+        showScanResult = true
+        delay(5000)
+        showScanResult = false
+    }
 
     var autofocusPoint by remember { mutableStateOf(false to Offset.Unspecified) }
     LaunchedEffect(autofocusPoint) {
@@ -150,11 +162,23 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
         autofocusPoint = false to autofocusPoint.second
     }
 
-    var showDialog by remember { mutableStateOf(false) }
+    var showDialog by remember { mutableStateOf(false to "") }
 
     Box {
         surfaceRequest?.let { surfaceRequest ->
             val coordinateTransformer = remember { MutableCoordinateTransformer() }
+            val sensorToUiTransformMatrix =
+                remember(transformationInfo, coordinateTransformer.transformMatrix) {
+                    transformationInfo?.let {
+                        Matrix().apply {
+                            setFrom(it.sensorToBufferTransform)
+                            timesAssign(Matrix().apply {
+                                setFrom(coordinateTransformer.transformMatrix)
+                                invert()
+                            })
+                        }
+                    }
+                }
             CameraXViewfinder(
                 surfaceRequest = surfaceRequest,
                 coordinateTransformer = coordinateTransformer,
@@ -167,34 +191,40 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                     }
                 },
             )
-
-            scanResult?.let { scanResult ->
-                val sensorToUiTransformMatrix = transformationInfo?.let {
-                    Matrix().apply {
-                        setFrom(it.sensorToBufferTransform)
-                        timesAssign(Matrix().apply {
-                            setFrom(coordinateTransformer.transformMatrix)
-                            invert()
-                        })
-                    }
-                }
-                sensorToUiTransformMatrix?.let { sensorToUiTransformMatrix ->
-                    scanResult.points.forEach {
-                        Box(
+            AnimatedVisibility(
+                visible = showScanResult,
+                enter = fadeIn(),
+                exit = fadeOut(),
+                modifier = Modifier.fillMaxSize(),
+            ) {
+                Box {
+                    scanResult?.let { scanResult ->
+                        sensorToUiTransformMatrix?.let { sensorToUiTransformMatrix ->
+                            scanResult.points.forEach {
+                                Box(
+                                    modifier = Modifier
+                                        .offset { sensorToUiTransformMatrix.map(it).round() }
+                                        .offset((-8).dp, (-8).dp)
+                                ) {
+                                    Spacer(
+                                        modifier = Modifier
+                                            .border(2.dp, Color.Green, CircleShape)
+                                            .size(16.dp)
+                                    )
+                                }
+                            }
+                        }
+                        Button(
+                            onClick = { showDialog = true to scanResult.text },
                             modifier = Modifier
-                                .offset { sensorToUiTransformMatrix.map(it).round() }
-                                .offset((-8).dp, (-8).dp)
+                                .align(Alignment.BottomCenter)
+                                .padding(16.dp, 8.dp)
                         ) {
-                            Spacer(
-                                modifier = Modifier
-                                    .border(2.dp, Color.Green, CircleShape)
-                                    .size(16.dp)
-                            )
+                            Text(text = "Info")
                         }
                     }
                 }
             }
-
             AnimatedVisibility(
                 visible = autofocusPoint.first,
                 enter = fadeIn(),
@@ -207,32 +237,21 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                     Modifier
                         .border(2.dp, Color.White, CircleShape)
                         .size(48.dp)
-
                 )
             }
         }
-        scanResult?.let { scanResult ->
-            Button(
-                onClick = { showDialog = true },
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .padding(16.dp, 8.dp)
-            ) {
-                Text(text = "Info")
-            }
-            if (!showDialog) return@let
+        if (showDialog.first) {
+            val scrollState = rememberScrollState()
             AlertDialog(
-                title = {
-                    Text(text = "QR data")
-                },
+                title = { Text(text = "QR data") },
                 text = {
-                    Text(text = scanResult.text)
+                    Column(modifier = Modifier.verticalScroll(scrollState)) {
+                        Text(text = showDialog.second)
+                    }
                 },
-                onDismissRequest = { showDialog = false },
+                onDismissRequest = { showDialog = false to showDialog.second },
                 confirmButton = {
-                    TextButton(
-                        onClick = { showDialog = false }
-                    ) {
+                    TextButton(onClick = { showDialog = false to showDialog.second }) {
                         Text("OK")
                     }
                 },
