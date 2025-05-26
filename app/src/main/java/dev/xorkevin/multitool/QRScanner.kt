@@ -24,6 +24,7 @@ import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -45,6 +46,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment.Companion.BottomStart
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.takeOrElse
@@ -121,6 +123,8 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
         }
     }
 
+    val detectorResult by qrScannerViewModel.detectorResult.collectAsStateWithLifecycle()
+
     var autofocusPoint by remember { mutableStateOf(false to Offset.Unspecified) }
     LaunchedEffect(autofocusPoint) {
         delay(1000)
@@ -140,6 +144,38 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                     }
                 },
             )
+
+            detectorResult?.let {
+                val scrollState = rememberScrollState()
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(scrollState)
+                        .align(BottomStart)
+                        .background(Color(0x80000000))
+                ) {
+                    Text(
+                        text = it.resultPoints.joinToString(",") { "(${it.x},${it.y})" },
+                        modifier = Modifier
+                            .padding(16.dp, 8.dp)
+                            .fillMaxWidth()
+                    )
+                    Text(
+                        text = autofocusPoint.second.takeOrElse { Offset.Zero }.round().toString(),
+                        modifier = Modifier
+                            .padding(16.dp, 8.dp)
+                            .fillMaxWidth()
+                    )
+                }
+                it.resultPoints.forEach {
+                    Spacer(
+                        modifier = Modifier
+                            .border(2.dp, Color.White, CircleShape)
+                            .size(8.dp)
+                            .offset { Offset(it.x, it.y).round() }
+                            .offset((-4).dp, (-4).dp)
+                    )
+                }
+            }
 
             AnimatedVisibility(
                 visible = autofocusPoint.first,
@@ -178,7 +214,7 @@ class QRScannerViewModel : ViewModel() {
     }
 
     private val _detectorResult = MutableStateFlow<ZxingResult?>(null)
-    val detectorResult = _surfaceRequest.asStateFlow()
+    val detectorResult = _detectorResult.asStateFlow()
 
     private val executor = Dispatchers.Default.asExecutor()
     private val analysisUseCase = ImageAnalysis.Builder()
@@ -215,13 +251,13 @@ class QRScannerViewModel : ViewModel() {
                     val reader = QRCodeReader()
                     val result = try {
                         reader.decode(bitmap)
-                    } catch (e: NotFoundException) {
+                    } catch (_: NotFoundException) {
                         null
-                    } catch (e: ChecksumException) {
+                    } catch (_: ChecksumException) {
                         null
-                    } catch (e: FormatException) {
+                    } catch (_: FormatException) {
                         null
-                    }
+                    } ?: return@use
                     _detectorResult.update { result }
                 }
             }
@@ -231,7 +267,8 @@ class QRScannerViewModel : ViewModel() {
         camera = cameraProvider.bindToLifecycle(
             lifecycleOwner,
             DEFAULT_BACK_CAMERA,
-            cameraPreviewUseCase
+            cameraPreviewUseCase,
+            analysisUseCase,
         )
     }
 
