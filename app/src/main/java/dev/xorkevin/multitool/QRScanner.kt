@@ -24,7 +24,6 @@ import androidx.camera.viewfinder.compose.MutableCoordinateTransformer
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
@@ -37,21 +36,27 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.ui.Alignment.Companion.BottomStart
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.takeOrElse
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Matrix
+import androidx.compose.ui.graphics.setFrom
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.round
@@ -78,7 +83,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
-import com.google.zxing.Result as ZxingResult
 
 @Composable
 fun QRScannerTool() {
@@ -101,7 +105,7 @@ fun QRScannerTool() {
                     .padding(16.dp, 8.dp)
                     .fillMaxWidth()
             ) {
-                Text("Grant camera permission")
+                Text(text = "Grant camera permission")
             }
         }
     }
@@ -123,7 +127,21 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
         }
     }
 
-    val detectorResult by qrScannerViewModel.detectorResult.collectAsStateWithLifecycle()
+    val transformationInfo by produceState<SurfaceRequest.TransformationInfo?>(
+        null,
+        surfaceRequest
+    ) {
+        try {
+            surfaceRequest?.setTransformationInfoListener(Runnable::run) { transformationInfo ->
+                value = transformationInfo
+            }
+            awaitCancellation()
+        } finally {
+            surfaceRequest?.clearTransformationInfoListener()
+        }
+    }
+
+    val scanResult by qrScannerViewModel.scanResult.collectAsStateWithLifecycle()
 
     var autofocusPoint by remember { mutableStateOf(false to Offset.Unspecified) }
     LaunchedEffect(autofocusPoint) {
@@ -132,11 +150,16 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
         autofocusPoint = false to autofocusPoint.second
     }
 
-    surfaceRequest?.let { surfaceRequest ->
-        Box {
+    var showDialog by remember { mutableStateOf(false) }
+
+    Box {
+        surfaceRequest?.let { surfaceRequest ->
             val coordinateTransformer = remember { MutableCoordinateTransformer() }
             CameraXViewfinder(
-                surfaceRequest = surfaceRequest, coordinateTransformer = coordinateTransformer,
+                surfaceRequest = surfaceRequest,
+                coordinateTransformer = coordinateTransformer,
+                alignment = Alignment.TopCenter,
+                contentScale = ContentScale.Fit,
                 modifier = Modifier.pointerInput(Unit) {
                     detectTapGestures { coordinates ->
                         qrScannerViewModel.tapToFocus(coordinateTransformer.run { coordinates.transform() })
@@ -145,35 +168,30 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                 },
             )
 
-            detectorResult?.let {
-                val scrollState = rememberScrollState()
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(scrollState)
-                        .align(BottomStart)
-                        .background(Color(0x80000000))
-                ) {
-                    Text(
-                        text = it.resultPoints.joinToString(",") { "(${it.x},${it.y})" },
-                        modifier = Modifier
-                            .padding(16.dp, 8.dp)
-                            .fillMaxWidth()
-                    )
-                    Text(
-                        text = autofocusPoint.second.takeOrElse { Offset.Zero }.round().toString(),
-                        modifier = Modifier
-                            .padding(16.dp, 8.dp)
-                            .fillMaxWidth()
-                    )
+            scanResult?.let { scanResult ->
+                val sensorToUiTransformMatrix = transformationInfo?.let {
+                    Matrix().apply {
+                        setFrom(it.sensorToBufferTransform)
+                        timesAssign(Matrix().apply {
+                            setFrom(coordinateTransformer.transformMatrix)
+                            invert()
+                        })
+                    }
                 }
-                it.resultPoints.forEach {
-                    Spacer(
-                        modifier = Modifier
-                            .border(2.dp, Color.White, CircleShape)
-                            .size(8.dp)
-                            .offset { Offset(it.x, it.y).round() }
-                            .offset((-4).dp, (-4).dp)
-                    )
+                sensorToUiTransformMatrix?.let { sensorToUiTransformMatrix ->
+                    scanResult.points.forEach {
+                        Box(
+                            modifier = Modifier
+                                .offset { sensorToUiTransformMatrix.map(it).round() }
+                                .offset((-8).dp, (-8).dp)
+                        ) {
+                            Spacer(
+                                modifier = Modifier
+                                    .border(2.dp, Color.Green, CircleShape)
+                                    .size(16.dp)
+                            )
+                        }
+                    }
                 }
             }
 
@@ -193,8 +211,37 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
                 )
             }
         }
+        scanResult?.let { scanResult ->
+            Button(
+                onClick = { showDialog = true },
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(16.dp, 8.dp)
+            ) {
+                Text(text = "Info")
+            }
+            if (!showDialog) return@let
+            AlertDialog(
+                title = {
+                    Text(text = "QR data")
+                },
+                text = {
+                    Text(text = scanResult.text)
+                },
+                onDismissRequest = { showDialog = false },
+                confirmButton = {
+                    TextButton(
+                        onClick = { showDialog = false }
+                    ) {
+                        Text("OK")
+                    }
+                },
+            )
+        }
     }
 }
+
+data class ScanResult(val text: String, val points: List<Offset>)
 
 class QRScannerViewModel : ViewModel() {
     private val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
@@ -213,8 +260,8 @@ class QRScannerViewModel : ViewModel() {
         }
     }
 
-    private val _detectorResult = MutableStateFlow<ZxingResult?>(null)
-    val detectorResult = _detectorResult.asStateFlow()
+    private val _scanResult = MutableStateFlow<ScanResult?>(null)
+    val scanResult = _scanResult.asStateFlow()
 
     private val executor = Dispatchers.Default.asExecutor()
     private val analysisUseCase = ImageAnalysis.Builder()
@@ -258,7 +305,15 @@ class QRScannerViewModel : ViewModel() {
                     } catch (_: FormatException) {
                         null
                     } ?: return@use
-                    _detectorResult.update { result }
+                    val bufferToSensorTransformMatrix = Matrix().apply {
+                        setFrom(image.imageInfo.sensorToBufferTransformMatrix)
+                        invert()
+                    }
+                    _scanResult.update {
+                        ScanResult(result.text, result.resultPoints.map {
+                            bufferToSensorTransformMatrix.map(Offset(it.x, it.y))
+                        })
+                    }
                 }
             }
         }
