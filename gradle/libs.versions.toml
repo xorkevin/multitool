@@ -13,7 +13,8 @@ kotlinxSerializationJson = "1.8.1"
 bouncyCastle = "1.80"
 runtime = "1.9.0-alpha03"
 accompanistPermissions = "0.37.3"
-cameraCompose = "1.5.0-beta01"
+camera = "1.5.0-beta01"
+zxing = "3.5.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -38,10 +39,11 @@ bcutil-jdk18on = { group = "org.bouncycastle", name = "bcutil-jdk18on", version.
 kotlin-reflect = { group = "org.jetbrains.kotlin", name = "kotlin-reflect", version.ref = "kotlin" }
 androidx-runtime = { group = "androidx.compose.runtime", name = "runtime", version.ref = "runtime" }
 accompanist-permissions = { group = "com.google.accompanist", name = "accompanist-permissions", version.ref = "accompanistPermissions" }
-androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "cameraCompose" }
-androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "cameraCompose" }
-androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "cameraCompose" }
-androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "cameraCompose" }
+androidx-camera-compose = { group = "androidx.camera", name = "camera-compose", version.ref = "camera" }
+androidx-camera-lifecycle = { group = "androidx.camera", name = "camera-lifecycle", version.ref = "camera" }
+androidx-camera-camera2 = { group = "androidx.camera", name = "camera-camera2", version.ref = "camera" }
+androidx-camera-core = { group = "androidx.camera", name = "camera-core", version.ref = "camera" }
+zxing = { group = "com.google.zxing", name = "core", version.ref = "zxing" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

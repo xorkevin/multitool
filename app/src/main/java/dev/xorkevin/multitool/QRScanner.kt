@@ -5,6 +5,7 @@
 
 package dev.xorkevin.multitool
 
+import android.graphics.ImageFormat.YUV_420_888
 import androidx.camera.compose.CameraXViewfinder
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector.DEFAULT_BACK_CAMERA
@@ -60,14 +61,22 @@ import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
+import com.google.zxing.BinaryBitmap
+import com.google.zxing.ChecksumException
+import com.google.zxing.FormatException
+import com.google.zxing.NotFoundException
+import com.google.zxing.PlanarYUVLuminanceSource
+import com.google.zxing.common.HybridBinarizer
+import com.google.zxing.qrcode.QRCodeReader
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asExecutor
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
+import com.google.zxing.Result as ZxingResult
 
 @Composable
 fun QRScannerTool() {
@@ -153,7 +162,7 @@ fun QRScanner() = ViewModelScope(QRScannerViewModel::class) {
 
 class QRScannerViewModel : ViewModel() {
     private val _surfaceRequest = MutableStateFlow<SurfaceRequest?>(null)
-    val surfaceRequest: StateFlow<SurfaceRequest?> = _surfaceRequest
+    val surfaceRequest = _surfaceRequest.asStateFlow()
 
     private var camera: Camera? = null
     private var surfacePointFactory: SurfaceOrientedMeteringPointFactory? = null
@@ -168,6 +177,9 @@ class QRScannerViewModel : ViewModel() {
         }
     }
 
+    private val _detectorResult = MutableStateFlow<ZxingResult?>(null)
+    val detectorResult = _surfaceRequest.asStateFlow()
+
     private val executor = Dispatchers.Default.asExecutor()
     private val analysisUseCase = ImageAnalysis.Builder()
         .setBackpressureStrategy(STRATEGY_KEEP_ONLY_LATEST)
@@ -177,7 +189,42 @@ class QRScannerViewModel : ViewModel() {
                 .build()
         )
         .build().apply {
-            setAnalyzer(executor) { }
+            setAnalyzer(executor) { image ->
+                image.use {
+                    if (image.format != YUV_420_888) return@use
+                    val plane = image.planes[0]
+                    val buffer = plane.buffer
+                    val pos = buffer.position()
+                    val buf = ByteArray(buffer.remaining())
+                    buffer.get(buf)
+                    buffer.position(pos)
+                    val bitmap = BinaryBitmap(
+                        HybridBinarizer(
+                            PlanarYUVLuminanceSource(
+                                buf,
+                                plane.rowStride,
+                                image.height,
+                                0,
+                                0,
+                                image.width,
+                                image.height,
+                                false
+                            )
+                        )
+                    )
+                    val reader = QRCodeReader()
+                    val result = try {
+                        reader.decode(bitmap)
+                    } catch (e: NotFoundException) {
+                        null
+                    } catch (e: ChecksumException) {
+                        null
+                    } catch (e: FormatException) {
+                        null
+                    }
+                    _detectorResult.update { result }
+                }
+            }
         }
 
     fun bindCamera(cameraProvider: ProcessCameraProvider, lifecycleOwner: LifecycleOwner) {
