@@ -88,9 +88,10 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 
 @Composable
-fun QRScannerTool() {
+fun QRScannerTool() = ViewModelScope(QRScannerToolViewModel::class) {
+    val qrScannerToolViewModel: QRScannerToolViewModel = scopedViewModel()
     val scrollState = rememberScrollState()
-    var scanOutput by remember { mutableStateOf("") }
+    var scanOutput by qrScannerToolViewModel.data.collectAsStateWithLifecycle()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         QRScannerLauncher(
             onScan = { scanOutput = it ?: "" },
@@ -109,6 +110,10 @@ fun QRScannerTool() {
                 .fillMaxWidth()
         )
     }
+}
+
+class QRScannerToolViewModel : ViewModel() {
+    val data = MutableViewModelStateFlow("")
 }
 
 @Composable
