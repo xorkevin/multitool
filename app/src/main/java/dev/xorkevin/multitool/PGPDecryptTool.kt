@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -64,6 +67,16 @@ fun PGPDecryptSecretKeyInput() {
         label = { Text(text = "ASCII armored secret key") },
         value = inputSecretKey,
         onValueChange = { inputSecretKey = it },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { inputSecretKey = it ?: "" },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan"
+                )
+            }
+        },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()
@@ -78,6 +91,16 @@ fun PGPDecryptCiphertextInput() {
         label = { Text(text = "Ciphertext") },
         value = inputCiphertext,
         onValueChange = { inputCiphertext = it },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { inputCiphertext = it ?: "" },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan"
+                )
+            }
+        },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()
@@ -92,6 +115,16 @@ fun PGPDecryptPassphraseInput() {
         label = { Text(text = "Passphrase") },
         value = inputPassphrase,
         onValueChange = { inputPassphrase = it },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { inputPassphrase = it ?: "" },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan"
+                )
+            }
+        },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()

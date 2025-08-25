@@ -7,6 +7,9 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
@@ -62,6 +65,16 @@ fun PGPEncryptPublicKeyInput() {
         label = { Text(text = "ASCII armored public key") },
         value = inputPublicKey,
         onValueChange = { inputPublicKey = it },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { inputPublicKey = it ?: "" },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan"
+                )
+            }
+        },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()
@@ -76,6 +89,16 @@ fun PGPEncryptPlaintextInput() {
         label = { Text(text = "Plaintext") },
         value = inputPlaintext,
         onValueChange = { inputPlaintext = it },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { inputPlaintext = it ?: "" },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan"
+                )
+            }
+        },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()

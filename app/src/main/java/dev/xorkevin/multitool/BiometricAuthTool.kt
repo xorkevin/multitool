@@ -1,0 +1,171 @@
+package dev.xorkevin.multitool
+
+import android.content.Context
+import android.content.ContextWrapper
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.ViewModel
+
+@Composable
+fun BiometricAuthTool() = ViewModelScope(BiometricAuthToolViewModel::class) {
+    val biometricAuthToolViewModel: BiometricAuthToolViewModel = scopedViewModel()
+    val scrollState = rememberScrollState()
+    var success by biometricAuthToolViewModel.success.collectAsStateWithLifecycle()
+    var error by biometricAuthToolViewModel.error.collectAsStateWithLifecycle()
+    Column(modifier = Modifier.verticalScroll(scrollState)) {
+        BiometricAuthLauncher(
+            title = "Test Biometric Authentication",
+            onSuccess = { success = true; error = "" },
+            onError = { success = false; error = it },
+            modifier = Modifier.padding(16.dp, 8.dp),
+        ) {
+            Text(text = "Test Biometric Auth", modifier = Modifier.padding(16.dp, 8.dp))
+        }
+        Text(
+            text = if (success) {
+                "success"
+            } else {
+                ""
+            },
+            modifier = Modifier.padding(16.dp, 8.dp),
+        )
+        Text(
+            text = if (error != "") {
+                "Error: $error"
+            } else {
+                ""
+            },
+            modifier = Modifier.padding(16.dp, 8.dp),
+        )
+    }
+}
+
+class BiometricAuthToolViewModel : ViewModel() {
+    val success = MutableViewModelStateFlow(false)
+    val error = MutableViewModelStateFlow("")
+}
+
+@Composable
+fun BiometricAuthLauncher(
+    title: String,
+    modifier: Modifier = Modifier,
+    onSuccess: () -> Unit = {},
+    onError: (err: String) -> Unit = {},
+    content: @Composable (RowScope.() -> Unit),
+) = ViewModelScope(BiometricAuthViewModel::class) {
+    val context = LocalContext.current
+    val activity: FragmentActivity? = context.getActivity()
+    val biometricManager = BiometricManager.from(context)
+    val canBiometricAuth =
+        biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_STRONG) == BiometricManager.BIOMETRIC_SUCCESS
+
+    val biometricAuthViewModel: BiometricAuthViewModel = scopedViewModel()
+    var showError by biometricAuthViewModel.showError.collectAsStateWithLifecycle()
+
+    Button(
+        onClick = {
+            if (!canBiometricAuth) {
+                showError = "Biometric authentication is not available on this device"
+            } else if (activity == null) {
+                showError = "Failed to set up biometric prompt due to missing activity"
+            } else {
+                authWithBiometric(
+                    title = title,
+                    activity = activity,
+                    onSuccess = onSuccess,
+                    onError = onError
+                )
+            }
+        },
+        modifier = modifier,
+        content = content,
+    )
+    if (showError != "") {
+        Dialog(
+            onDismissRequest = { showError = "" },
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = true,
+            ),
+        ) {
+            val scrollState = rememberScrollState()
+            Column(modifier = Modifier.verticalScroll(scrollState)) {
+                Text(
+                    text = showError,
+                    modifier = Modifier.padding(16.dp, 8.dp),
+                )
+                Button(
+                    onClick = { showError = "" },
+                    modifier = Modifier.padding(16.dp, 8.dp)
+                ) {
+                    Text(text = "Close")
+                }
+            }
+        }
+    }
+}
+
+fun authWithBiometric(
+    title: String,
+    activity: FragmentActivity,
+    onSuccess: () -> Unit,
+    onError: (err: String) -> Unit,
+) {
+
+    val biometricPrompt = BiometricPrompt(
+        activity,
+        object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                onSuccess()
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                onError(errString.toString())
+            }
+
+            override fun onAuthenticationFailed() {
+            }
+        })
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle(title)
+        .setNegativeButtonText("Cancel")
+        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        .setConfirmationRequired(true)
+        .build()
+
+    biometricPrompt.authenticate(promptInfo)
+}
+
+inline fun <reified T : FragmentActivity> Context.getActivity(): T? {
+    var context = this
+    while (true) {
+        if (context is T) {
+            return context
+        }
+        if (context is ContextWrapper) {
+            context = context.baseContext
+            continue
+        }
+        return null
+    }
+}
+
+class BiometricAuthViewModel : ViewModel() {
+    val showError = MutableViewModelStateFlow("")
+}

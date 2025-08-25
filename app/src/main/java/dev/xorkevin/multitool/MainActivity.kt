@@ -3,7 +3,6 @@
 package dev.xorkevin.multitool
 
 import android.os.Bundle
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.foundation.layout.Column
@@ -29,6 +28,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
+import androidx.fragment.app.FragmentActivity
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -39,7 +39,7 @@ import dev.xorkevin.multitool.ui.theme.MultitoolTheme
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -70,6 +70,9 @@ object Route {
 
         @Serializable
         data object Git
+
+        @Serializable
+        data object Biometrics
     }
 }
 
@@ -81,6 +84,7 @@ val routes = listOf(
     RouteEntry(Route.Tool.PGPDecrypt, "PGP Decrypt"),
     RouteEntry(Route.Tool.QRScanner, "QR Scanner"),
     RouteEntry(Route.Tool.Git, "Git"),
+    RouteEntry(Route.Tool.Biometrics, "Biometrics"),
 )
 
 @Composable
@@ -174,6 +178,9 @@ fun App() {
                     }
                     composable<Route.Tool.Git> {
                         GitTool()
+                    }
+                    composable<Route.Tool.Biometrics> {
+                        BiometricAuthTool()
                     }
                 }
             }

@@ -124,68 +124,67 @@ fun QRScannerLauncher(
     modifier: Modifier = Modifier,
     onScan: (value: String?) -> Unit = {},
     content: @Composable (RowScope.() -> Unit),
-) =
-    ViewModelScope(QRScannerViewModel::class) {
-        val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
-        val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
-        var scanEnabled by qrScannerViewModel.scanEnabled.collectAsStateWithLifecycle()
-        Button(
-            onClick = { scanEnabled = true },
-            modifier = modifier,
-            content = content,
-        )
-        if (scanEnabled) {
-            Dialog(
-                onDismissRequest = { scanEnabled = false },
-                properties = DialogProperties(
-                    dismissOnBackPress = true,
-                    dismissOnClickOutside = true,
-                    usePlatformDefaultWidth = false
-                ),
+) = ViewModelScope(QRScannerViewModel::class) {
+    val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
+    val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
+    var scanEnabled by qrScannerViewModel.scanEnabled.collectAsStateWithLifecycle()
+    Button(
+        onClick = { scanEnabled = true },
+        modifier = modifier,
+        content = content,
+    )
+    if (scanEnabled) {
+        Dialog(
+            onDismissRequest = { scanEnabled = false },
+            properties = DialogProperties(
+                dismissOnBackPress = true,
+                dismissOnClickOutside = true,
+                usePlatformDefaultWidth = false,
+            ),
+        ) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black)
             ) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .background(Color.Black)
-                ) {
-                    if (cameraPermissionState.status.isGranted) {
-                        QRScanner(onScan = {
-                            scanEnabled = false
-                            onScan(it)
-                        }, onDismiss = { scanEnabled = false })
-                    } else {
-                        val scrollState = rememberScrollState()
-                        Column(modifier = Modifier.verticalScroll(scrollState)) {
-                            if (cameraPermissionState.status.shouldShowRationale) {
-                                Text(
-                                    text = "Camera permission is needed to scan qr code",
-                                    modifier = Modifier
-                                        .padding(16.dp, 8.dp)
-                                        .fillMaxWidth()
-                                )
-                            }
-                            Button(
-                                onClick = { cameraPermissionState.launchPermissionRequest() },
+                if (cameraPermissionState.status.isGranted) {
+                    QRScanner(onScan = {
+                        scanEnabled = false
+                        onScan(it)
+                    }, onDismiss = { scanEnabled = false })
+                } else {
+                    val scrollState = rememberScrollState()
+                    Column(modifier = Modifier.verticalScroll(scrollState)) {
+                        if (cameraPermissionState.status.shouldShowRationale) {
+                            Text(
+                                text = "Camera permission is needed to scan qr code",
                                 modifier = Modifier
                                     .padding(16.dp, 8.dp)
                                     .fillMaxWidth()
-                            ) {
-                                Text(text = "Grant camera permission")
-                            }
-                            Button(
-                                onClick = { scanEnabled = false },
-                                modifier = Modifier
-                                    .padding(16.dp, 8.dp)
-                                    .fillMaxWidth()
-                            ) {
-                                Text(text = "Cancel")
-                            }
+                            )
+                        }
+                        Button(
+                            onClick = { cameraPermissionState.launchPermissionRequest() },
+                            modifier = Modifier
+                                .padding(16.dp, 8.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(text = "Grant camera permission")
+                        }
+                        Button(
+                            onClick = { scanEnabled = false },
+                            modifier = Modifier
+                                .padding(16.dp, 8.dp)
+                                .fillMaxWidth()
+                        ) {
+                            Text(text = "Cancel")
                         }
                     }
                 }
             }
         }
     }
+}
 
 @Composable
 fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
