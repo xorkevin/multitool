@@ -67,6 +67,9 @@ object Route {
 
         @Serializable
         data object QRScanner
+
+        @Serializable
+        data object Git
     }
 }
 
@@ -77,6 +80,7 @@ val routes = listOf(
     RouteEntry(Route.Tool.PGPEncrypt, "PGP Encrypt"),
     RouteEntry(Route.Tool.PGPDecrypt, "PGP Decrypt"),
     RouteEntry(Route.Tool.QRScanner, "QR Scanner"),
+    RouteEntry(Route.Tool.Git, "Git"),
 )
 
 @Composable
@@ -167,6 +171,9 @@ fun App() {
                     }
                     composable<Route.Tool.QRScanner> {
                         QRScannerTool()
+                    }
+                    composable<Route.Tool.Git> {
+                        GitTool()
                     }
                 }
             }

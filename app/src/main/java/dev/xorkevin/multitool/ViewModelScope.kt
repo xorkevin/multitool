@@ -44,7 +44,7 @@ inline fun <reified T : ViewModel> scopedViewModel(): T {
 @Composable
 fun <T : ViewModel> ViewModelScope(
     vararg vmClasses: KClass<out T>,
-    content: @Composable (() -> Unit)
+    content: @Composable (() -> Unit),
 ) {
     val activity = LocalActivity.current ?: throw IllegalStateException("No activity")
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()

@@ -29,6 +29,7 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -98,7 +99,9 @@ fun QRScannerTool() = ViewModelScope(QRScannerToolViewModel::class) {
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp, 8.dp),
-        )
+        ) {
+            Text(text = "Scan")
+        }
         Text(
             text = "QR data", modifier = Modifier
                 .padding(16.dp, 8.dp)
@@ -117,7 +120,11 @@ class QRScannerToolViewModel : ViewModel() {
 }
 
 @Composable
-fun QRScannerLauncher(modifier: Modifier = Modifier, onScan: (value: String?) -> Unit = {}) =
+fun QRScannerLauncher(
+    modifier: Modifier = Modifier,
+    onScan: (value: String?) -> Unit = {},
+    content: @Composable (RowScope.() -> Unit),
+) =
     ViewModelScope(QRScannerViewModel::class) {
         val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
         val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
@@ -125,9 +132,8 @@ fun QRScannerLauncher(modifier: Modifier = Modifier, onScan: (value: String?) ->
         Button(
             onClick = { scanEnabled = true },
             modifier = modifier,
-        ) {
-            Text(text = "Scan")
-        }
+            content = content,
+        )
         if (scanEnabled) {
             Dialog(
                 onDismissRequest = { scanEnabled = false },
