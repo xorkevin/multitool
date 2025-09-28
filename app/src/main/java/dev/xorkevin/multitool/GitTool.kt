@@ -229,32 +229,32 @@ fun SshKeyManagerInput() {
 
 class GitViewModel(private val appContext: Context) : ViewModel() {
     @Entity(tableName = "gitviewmodel_ssh_keys", primaryKeys = ["name"])
-    data class Key(
+    data class SshKey(
         @ColumnInfo(name = "name") val name: String,
         @ColumnInfo(name = "key_str") val keyStr: String,
         @ColumnInfo(name = "passphrase") val passphrase: String,
     )
 
-    data class KeyNameTuple(
+    data class SshKeyNameTuple(
         @ColumnInfo(name = "name") val name: String?,
     )
 
     @Dao
     interface KeyDao {
         @Query("SELECT * FROM gitviewmodel_ssh_keys WHERE name = :name")
-        suspend fun getByName(name: String): Key?
+        suspend fun getByName(name: String): SshKey?
 
         @Query("SELECT name FROM gitviewmodel_ssh_keys")
-        suspend fun getAll(): List<KeyNameTuple>
+        suspend fun getAll(): List<SshKeyNameTuple>
 
         @Insert
-        suspend fun insertAll(vararg keys: Key)
+        suspend fun insertAll(vararg sshKeys: SshKey)
 
         @Query("DELETE FROM gitviewmodel_ssh_keys WHERE name = :name")
         suspend fun deleteByName(name: String): Int
     }
 
-    @Database(entities = [Key::class], version = 1)
+    @Database(entities = [SshKey::class], version = 1)
     abstract class DB : RoomDatabase() {
         abstract fun keyDao(): KeyDao
 
@@ -344,7 +344,7 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
         return withContext(Dispatchers.IO) {
             try {
                 db.keyDao().insertAll(
-                    Key(
+                    SshKey(
                         name = name,
                         keyStr = keyStr,
                         passphrase = passphrase,
