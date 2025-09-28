@@ -18,6 +18,8 @@ zxing = "3.5.3"
 biometric = "1.4.0-alpha04"
 orgEclipseJgit = "7.3.0.202506031305-r"
 materialIconsCore = "1.7.8"
+room = "2.8.1"
+ksp = "2.2.20-2.0.3"
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -52,9 +54,15 @@ androidx-biometric = { group = "androidx.biometric", name = "biometric", version
 org-eclipse-jgit = { group = "org.eclipse.jgit", name = "org.eclipse.jgit", version.ref = "orgEclipseJgit" }
 org-eclipse-jgit-ssh-apache = { group = "org.eclipse.jgit", name = "org.eclipse.jgit.ssh.apache", version.ref = "orgEclipseJgit" }
 androidx-compose-material-icons-core = { group = "androidx.compose.material", name = "material-icons-core", version.ref = "materialIconsCore" }
+androidx-room-runtime = { group = "androidx.room", name = "room-runtime", version.ref = "room" }
+androidx-room-compiler = { group = "androidx.room", name = "room-compiler", version.ref = "room" }
+androidx-room-ktx = { group = "androidx.room", name = "room-ktx", version.ref = "room" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }
 kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
+room = { id = "androidx.room", version.ref = "room" }
+

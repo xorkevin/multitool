@@ -86,10 +86,7 @@ fun BiometricAuthLauncher(
                 showError = "Failed to set up biometric prompt due to missing activity"
             } else {
                 authWithBiometric(
-                    title = title,
-                    activity = activity,
-                    onSuccess = onSuccess,
-                    onError = onError
+                    title = title, activity = activity, onSuccess = onSuccess, onError = onError
                 )
             }
         },
@@ -116,8 +113,7 @@ fun BiometricAuthLauncher(
                     modifier = Modifier.padding(16.dp, 8.dp),
                 )
                 Button(
-                    onClick = { showError = "" },
-                    modifier = Modifier.padding(16.dp, 8.dp)
+                    onClick = { showError = "" }, modifier = Modifier.padding(16.dp, 8.dp)
                 ) {
                     Text(text = "Close")
                 }
@@ -134,8 +130,7 @@ fun authWithBiometric(
 ) {
 
     val biometricPrompt = BiometricPrompt(
-        activity,
-        object : BiometricPrompt.AuthenticationCallback() {
+        activity, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
                 onSuccess()
             }
@@ -148,12 +143,10 @@ fun authWithBiometric(
             }
         })
 
-    val promptInfo = BiometricPrompt.PromptInfo.Builder()
-        .setTitle(title)
-        .setNegativeButtonText("Cancel")
-        .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        .setConfirmationRequired(true)
-        .build()
+    val promptInfo =
+        BiometricPrompt.PromptInfo.Builder().setTitle(title).setNegativeButtonText("Cancel")
+            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+            .setConfirmationRequired(true).build()
 
     biometricPrompt.authenticate(promptInfo)
 }

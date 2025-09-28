@@ -92,13 +92,11 @@ fun App() {
     val navController = rememberNavController()
     val drawerState = rememberDrawerState(initialValue = DrawerValue.Closed)
     val scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState())
-    val scope = rememberCoroutineScope()
+    val coroutineScope = rememberCoroutineScope()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
 
     ModalNavigationDrawer(
-        modifier = Modifier.fillMaxSize(),
-        drawerState = drawerState,
-        drawerContent = {
+        modifier = Modifier.fillMaxSize(), drawerState = drawerState, drawerContent = {
             ModalDrawerSheet(
                 drawerState = drawerState
             ) {
@@ -110,7 +108,7 @@ fun App() {
                             label = { Text(text = it.name) },
                             selected = currentDestination?.hasRoute(it.route::class) == true,
                             onClick = {
-                                scope.launch { drawerState.close() }
+                                coroutineScope.launch { drawerState.close() }
                                 navController.navigate(route = it.route) {
                                     popUpTo(navController.graph.startDestinationId) {
                                         saveState = true
@@ -139,7 +137,7 @@ fun App() {
                     },
                     navigationIcon = {
                         IconButton(onClick = {
-                            scope.launch {
+                            coroutineScope.launch {
                                 if (drawerState.isOpen) {
                                     drawerState.close()
                                 } else {

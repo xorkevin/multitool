@@ -5,6 +5,8 @@ plugins {
     alias(libs.plugins.kotlin.android)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.kotlin.serialization)
+    alias(libs.plugins.ksp)
+    alias(libs.plugins.room)
 }
 
 android {
@@ -34,12 +36,12 @@ android {
         }
     }
     compileOptions {
-        sourceCompatibility = JavaVersion.VERSION_11
-        targetCompatibility = JavaVersion.VERSION_11
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
     }
     kotlin {
         compilerOptions {
-            jvmTarget = JvmTarget.fromTarget("11")
+            jvmTarget = JvmTarget.fromTarget("17")
         }
     }
     buildFeatures {
@@ -48,7 +50,12 @@ android {
     packaging {
         resources {
             excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            excludes += "OSGI-INF/l10n/plugin.properties"
+            excludes += "META-INF/DEPENDENCIES"
         }
+    }
+    room {
+        schemaDirectory("$projectDir/schemas")
     }
 }
 
@@ -80,6 +87,9 @@ dependencies {
     implementation(libs.org.eclipse.jgit)
     implementation(libs.org.eclipse.jgit.ssh.apache)
     implementation(libs.androidx.compose.material.icons.core)
+    implementation(libs.androidx.room.runtime)
+    ksp(libs.androidx.room.compiler)
+    implementation(libs.androidx.room.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)

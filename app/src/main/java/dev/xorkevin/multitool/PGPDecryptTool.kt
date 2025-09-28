@@ -253,8 +253,7 @@ internal fun gpgDecryptMessage(
 private fun findSecretKey(
     keyringCollection: BcPGPSecretKeyRingCollection,
     identifier: KeyIdentifier,
-): PGPSecretKey? =
-    keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
+): PGPSecretKey? = keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
 
 internal fun loadGPGSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
     return try {

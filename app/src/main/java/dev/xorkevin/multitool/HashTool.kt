@@ -1,6 +1,5 @@
 @file:OptIn(
-    ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class,
-    ExperimentalCoroutinesApi::class
+    ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class, ExperimentalCoroutinesApi::class
 )
 
 package dev.xorkevin.multitool
@@ -64,7 +63,9 @@ fun HashDisplay() {
                 .fillMaxWidth()
         )
         Text(
-            text = it.value, fontFamily = FontFamily.Monospace, modifier = Modifier
+            text = it.value,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )

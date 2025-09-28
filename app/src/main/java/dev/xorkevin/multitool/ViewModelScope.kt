@@ -20,6 +20,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
 import kotlin.reflect.KType
@@ -93,15 +94,13 @@ class ViewModelScopeContext<T : ViewModel>(
 
     private companion object {
         private tailrec fun getStoreOwnerKey(
-            ctx: ViewModelScopeContext<*>,
-            type: KType
-        ): ViewModelStoreOwnerKey? =
-            if (ctx.kType.isSubtypeOf(type)) {
-                ctx.key
-            } else {
-                val parent = ctx.parent ?: return null
-                getStoreOwnerKey(parent, type)
-            }
+            ctx: ViewModelScopeContext<*>, type: KType
+        ): ViewModelStoreOwnerKey? = if (ctx.kType.isSubtypeOf(type)) {
+            ctx.key
+        } else {
+            val parent = ctx.parent ?: return null
+            getStoreOwnerKey(parent, type)
+        }
     }
 }
 
@@ -144,6 +143,13 @@ class MutableViewModelState<T>(private val state: State<T>, private val flow: Mu
 class MutableViewModelStateFlow<T>(initValue: T) {
     private val _flow = MutableStateFlow(initValue)
     val flow = _flow.asStateFlow()
+
+    fun update(f: (T) -> T) {
+        _flow.update(f)
+    }
+
+    val value
+        get(): T = _flow.value
 
     @Composable
     fun collectAsStateWithLifecycle(): MutableViewModelState<T> =

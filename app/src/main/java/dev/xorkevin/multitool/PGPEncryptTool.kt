@@ -111,7 +111,8 @@ fun PGPEncryptPublicKeyDisplay() {
     val publicKey by pgpEncryptViewModel.publicKey.collectAsStateWithLifecycle()
     publicKey.onFailure {
         Text(
-            text = "Invalid public key: ${it.toString()}", modifier = Modifier
+            text = "Invalid public key: ${it.toString()}",
+            modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
@@ -124,14 +125,17 @@ fun PGPEncryptCiphertextDisplay() {
     val ciphertext by pgpEncryptViewModel.ciphertext.collectAsStateWithLifecycle()
     ciphertext.onFailure {
         Text(
-            text = "Failed encrypting: ${it.toString()}", modifier = Modifier
+            text = "Failed encrypting: ${it.toString()}",
+            modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
     }
     ciphertext.onSuccess {
         Text(
-            text = it, fontFamily = FontFamily.Monospace, modifier = Modifier
+            text = it,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
@@ -146,9 +150,7 @@ class PGPEncryptViewModel : ViewModel() {
             loadGPGPublicKey(it)
         }
     }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(),
-        Result.failure(Exception("No public key"))
+        viewModelScope, SharingStarted.WhileSubscribed(), Result.failure(Exception("No public key"))
     )
     val inputPlaintext = MutableViewModelStateFlow("")
     val ciphertext = combine(publicKey, inputPlaintext.flow.debounce(250.milliseconds)) { a, b ->
@@ -162,9 +164,7 @@ class PGPEncryptViewModel : ViewModel() {
             gpgEncryptMessage(pubKey, inputPlaintext)
         }
     }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(),
-        Result.failure(Exception("No public key"))
+        viewModelScope, SharingStarted.WhileSubscribed(), Result.failure(Exception("No public key"))
     )
 }
 

@@ -1,6 +1,8 @@
 @file:OptIn(
-    ExperimentalMaterial3Api::class, ExperimentalStdlibApi::class,
-    ExperimentalCoroutinesApi::class, ExperimentalPermissionsApi::class
+    ExperimentalMaterial3Api::class,
+    ExperimentalStdlibApi::class,
+    ExperimentalCoroutinesApi::class,
+    ExperimentalPermissionsApi::class
 )
 
 package dev.xorkevin.multitool
@@ -108,7 +110,9 @@ fun QRScannerTool() = ViewModelScope(QRScannerToolViewModel::class) {
                 .fillMaxWidth()
         )
         Text(
-            text = scanOutput, fontFamily = FontFamily.Monospace, modifier = Modifier
+            text = scanOutput,
+            fontFamily = FontFamily.Monospace,
+            modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
@@ -205,8 +209,7 @@ fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
     }
 
     val transformationInfo by produceState<SurfaceRequest.TransformationInfo?>(
-        null,
-        surfaceRequest
+        null, surfaceRequest
     ) {
         try {
             surfaceRequest?.setTransformationInfoListener(Runnable::run) { transformationInfo ->
@@ -273,11 +276,11 @@ fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
                 scanResult?.let { scanResult ->
                     sensorToUiTransformMatrix?.let { sensorToUiTransformMatrix ->
                         scanResult.points.forEach {
-                            Box(
-                                modifier = Modifier
-                                    .offset { sensorToUiTransformMatrix.map(it).round() }
-                                    .offset((-8).dp, (-8).dp)
-                            ) {
+                            Box(modifier = Modifier
+                                .offset {
+                                    sensorToUiTransformMatrix.map(it).round()
+                                }
+                                .offset((-8).dp, (-8).dp)) {
                                 Spacer(
                                     modifier = Modifier
                                         .border(2.dp, Color.Green, CircleShape)
@@ -299,8 +302,7 @@ fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
                     Text(text = "Scan")
                 }
                 Button(
-                    onClick = onDismiss,
-                    modifier = Modifier.padding(16.dp, 8.dp)
+                    onClick = onDismiss, modifier = Modifier.padding(16.dp, 8.dp)
                 ) {
                     Text(text = "Cancel")
                 }
@@ -312,8 +314,7 @@ fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
             exit = fadeOut(),
             modifier = Modifier
                 .offset { autofocusPoint.second.takeOrElse { Offset.Zero }.round() }
-                .offset((-24).dp, (-24).dp)
-        ) {
+                .offset((-24).dp, (-24).dp)) {
             Spacer(
                 Modifier
                     .border(2.dp, Color.White, CircleShape)
@@ -350,68 +351,66 @@ class QRScannerViewModel : ViewModel() {
 
     var imageBuffer = ByteArray(0)
     private val executor = Dispatchers.Default.asExecutor()
-    private val analysisUseCase = ImageAnalysis.Builder()
-        .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-        .setResolutionSelector(
-            ResolutionSelector.Builder()
-                .setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
-                .setResolutionStrategy(
-                    ResolutionStrategy(
-                        Size(1600, 1200),
-                        ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
-                    )
-                )
-                .build()
-        )
-        .build().apply {
-            setAnalyzer(executor) { image ->
-                image.use {
-                    if (image.format != ImageFormat.YUV_420_888) return@use
-                    val plane = image.planes[0]
-                    val buffer = plane.buffer
-                    val pos = buffer.position()
-                    val targetSize = buffer.remaining()
-                    if (imageBuffer.size < targetSize) {
-                        imageBuffer = ByteArray(targetSize)
-                    }
-                    buffer.get(imageBuffer)
-                    buffer.position(pos)
-                    val bitmap = BinaryBitmap(
-                        HybridBinarizer(
-                            PlanarYUVLuminanceSource(
-                                imageBuffer,
-                                plane.rowStride,
-                                image.height,
-                                0,
-                                0,
-                                image.width,
-                                image.height,
-                                false
+    private val analysisUseCase =
+        ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setResolutionSelector(
+                ResolutionSelector.Builder()
+                    .setAllowedResolutionMode(ResolutionSelector.PREFER_HIGHER_RESOLUTION_OVER_CAPTURE_RATE)
+                    .setResolutionStrategy(
+                        ResolutionStrategy(
+                            Size(1600, 1200),
+                            ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER
+                        )
+                    ).build()
+            ).build().apply {
+                setAnalyzer(executor) { image ->
+                    image.use {
+                        if (image.format != ImageFormat.YUV_420_888) return@use
+                        val plane = image.planes[0]
+                        val buffer = plane.buffer
+                        val pos = buffer.position()
+                        val targetSize = buffer.remaining()
+                        if (imageBuffer.size < targetSize) {
+                            imageBuffer = ByteArray(targetSize)
+                        }
+                        buffer.get(imageBuffer)
+                        buffer.position(pos)
+                        val bitmap = BinaryBitmap(
+                            HybridBinarizer(
+                                PlanarYUVLuminanceSource(
+                                    imageBuffer,
+                                    plane.rowStride,
+                                    image.height,
+                                    0,
+                                    0,
+                                    image.width,
+                                    image.height,
+                                    false
+                                )
                             )
                         )
-                    )
-                    val reader = QRCodeReader()
-                    val result = try {
-                        reader.decode(bitmap)
-                    } catch (_: NotFoundException) {
-                        null
-                    } catch (_: ChecksumException) {
-                        null
-                    } catch (_: FormatException) {
-                        null
-                    } ?: return@use
-                    val bufferToSensorTransformMatrix = Matrix().apply {
-                        setFrom(image.imageInfo.sensorToBufferTransformMatrix)
-                        invert()
-                    }
-                    _scanResult.update {
-                        ScanResult(result.text, result.resultPoints.map {
-                            bufferToSensorTransformMatrix.map(Offset(it.x, it.y))
-                        })
+                        val reader = QRCodeReader()
+                        val result = try {
+                            reader.decode(bitmap)
+                        } catch (_: NotFoundException) {
+                            null
+                        } catch (_: ChecksumException) {
+                            null
+                        } catch (_: FormatException) {
+                            null
+                        } ?: return@use
+                        val bufferToSensorTransformMatrix = Matrix().apply {
+                            setFrom(image.imageInfo.sensorToBufferTransformMatrix)
+                            invert()
+                        }
+                        _scanResult.update {
+                            ScanResult(result.text, result.resultPoints.map {
+                                bufferToSensorTransformMatrix.map(Offset(it.x, it.y))
+                            })
+                        }
                     }
                 }
             }
-        }
 
     fun bindCamera(cameraProvider: ProcessCameraProvider, lifecycleOwner: LifecycleOwner) {
         camera = cameraProvider.bindToLifecycle(
