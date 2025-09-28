@@ -13,6 +13,7 @@ import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -31,14 +32,14 @@ val LocalViewModelScopeContext: ProvidableCompositionLocal<ViewModelScopeContext
     staticCompositionLocalOf { null }
 
 @Composable
-inline fun <reified T : ViewModel> scopedViewModel(): T {
+inline fun <reified T : ViewModel> scopedViewModel(factory: ViewModelProvider.Factory? = null): T {
     val ctx =
         LocalViewModelScopeContext.current ?: throw IllegalStateException("No scoped view model")
     val key =
         ctx.getStoreOwnerKey(typeOf<T>()) ?: throw IllegalStateException("No scoped view model")
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()
     val storeOwner = storeOwnerViewModel.getStoreOwner(key)
-    return viewModel(viewModelStoreOwner = storeOwner)
+    return viewModel(viewModelStoreOwner = storeOwner, factory = factory)
 }
 
 @Composable

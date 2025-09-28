@@ -143,7 +143,7 @@ class PGPEncryptViewModel : ViewModel() {
     val publicKey = inputPublicKey.flow.mapLatest {
         delay(250.milliseconds)
         withContext(Dispatchers.Default) {
-            loadPublicKey(it)
+            loadGPGPublicKey(it)
         }
     }.stateIn(
         viewModelScope,
@@ -159,7 +159,7 @@ class PGPEncryptViewModel : ViewModel() {
             return@mapLatest Result.failure(Exception("No public key"))
         }
         withContext(Dispatchers.Default) {
-            encryptMessage(pubKey, inputPlaintext)
+            gpgEncryptMessage(pubKey, inputPlaintext)
         }
     }.stateIn(
         viewModelScope,
@@ -168,7 +168,7 @@ class PGPEncryptViewModel : ViewModel() {
     )
 }
 
-internal fun encryptMessage(publicKey: PGPPublicKey, message: String): Result<String> {
+internal fun gpgEncryptMessage(publicKey: PGPPublicKey, message: String): Result<String> {
     val plaintext = message.toByteArray()
     val literalData = ByteArrayOutputStream()
     PGPLiteralDataGenerator().open(
@@ -189,7 +189,7 @@ internal fun encryptMessage(publicKey: PGPPublicKey, message: String): Result<St
     return Result.success(out.toString())
 }
 
-internal fun loadPublicKey(armoredPublicKey: String): Result<PGPPublicKey> {
+internal fun loadGPGPublicKey(armoredPublicKey: String): Result<PGPPublicKey> {
     val keyringCollection = try {
         BcPGPPublicKeyRingCollection(
             PGPUtil.getDecoderStream(ByteArrayInputStream(armoredPublicKey.toByteArray()))

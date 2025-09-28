@@ -173,7 +173,7 @@ class PGPDecryptViewModel : ViewModel() {
     val secretKeyRings = inputSecretKey.flow.mapLatest {
         delay(250.milliseconds)
         withContext(Dispatchers.Default) {
-            loadSecretKeys(it)
+            loadGPGSecretKeys(it)
         }
     }.stateIn(
         viewModelScope,
@@ -194,7 +194,7 @@ class PGPDecryptViewModel : ViewModel() {
             return@mapLatest Result.failure(Exception("No secret keyring"))
         }
         withContext(Dispatchers.Default) {
-            decryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
+            gpgDecryptMessage(secKeyRings, inputPassphrase, inputCiphertext)
         }
     }.stateIn(
         viewModelScope,
@@ -203,7 +203,7 @@ class PGPDecryptViewModel : ViewModel() {
     )
 }
 
-internal fun decryptMessage(
+internal fun gpgDecryptMessage(
     keyringCollection: BcPGPSecretKeyRingCollection,
     passphrase: String,
     ciphertext: String,
@@ -256,7 +256,7 @@ private fun findSecretKey(
 ): PGPSecretKey? =
     keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
 
-internal fun loadSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
+internal fun loadGPGSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
     return try {
         Result.success(
             BcPGPSecretKeyRingCollection(

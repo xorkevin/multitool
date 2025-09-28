@@ -4,7 +4,7 @@ import org.junit.Assert
 import org.junit.Test
 
 class PGPToolTest {
-    val testPublicKey = """
+    private val testPublicKey = """
         -----BEGIN PGP PUBLIC KEY BLOCK-----
 
         mDMEaA3TdRYJKwYBBAHaRw8BAQdADYsvagEXqtrfQEldCMuc3rtF6/h81XTFavJA
@@ -20,7 +20,7 @@ class PGPToolTest {
         -----END PGP PUBLIC KEY BLOCK-----
     """.trimIndent()
 
-    val testPrivateKey = """
+    private val testPrivateKey = """
         -----BEGIN PGP PRIVATE KEY BLOCK-----
 
         lIYEaA3TdRYJKwYBBAHaRw8BAQdADYsvagEXqtrfQEldCMuc3rtF6/h81XTFavJA
@@ -39,7 +39,7 @@ class PGPToolTest {
         -----END PGP PRIVATE KEY BLOCK-----
     """.trimIndent()
 
-    val testCiphertext = """
+    private val testCiphertext = """
         -----BEGIN PGP MESSAGE-----
 
         hF4DbASE5vdi4fkSAQdAu65QyDTnM3sleTkDXArnKVoZ35U7DHnL7xxVovjLhlEw
@@ -50,20 +50,20 @@ class PGPToolTest {
         -----END PGP MESSAGE-----
     """.trimIndent()
 
-    val testPassphrase = "passphrase123"
+    private val testPassphrase = "passphrase123"
 
     @Test
     fun encryptAndDecryptMessage() {
-        val publicKey = loadPublicKey(testPublicKey).getOrThrow()
-        val secretKeyRings = loadSecretKeys(testPrivateKey).getOrThrow()
-        val ciphertext = encryptMessage(publicKey, "test message").getOrThrow()
+        val publicKey = loadGPGPublicKey(testPublicKey).getOrThrow()
+        val secretKeyRings = loadGPGSecretKeys(testPrivateKey).getOrThrow()
+        val ciphertext = gpgEncryptMessage(publicKey, "test message").getOrThrow()
         Assert.assertEquals(
             "test message",
-            decryptMessage(secretKeyRings, testPassphrase, ciphertext).getOrThrow()
+            gpgDecryptMessage(secretKeyRings, testPassphrase, ciphertext).getOrThrow()
         )
         Assert.assertEquals(
             "hello world",
-            decryptMessage(secretKeyRings, testPassphrase, testCiphertext).getOrThrow()
+            gpgDecryptMessage(secretKeyRings, testPassphrase, testCiphertext).getOrThrow()
         )
     }
 }
