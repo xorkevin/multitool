@@ -60,9 +60,10 @@ fun GitTool() = ViewModelScope(GitViewModel::class) {
 
 @Composable
 fun GitCloneInput() {
-    val gitViewModel: GitViewModel = scopedViewModel(
-        factory = GitViewModel.Factory(LocalContext.current.applicationContext)
-    )
+    val appContext = LocalContext.current.applicationContext
+    val gitViewModel: GitViewModel = scopedViewModel {
+        GitViewModel(appContext)
+    }
     var name by gitViewModel.gitRepoName.collectAsStateWithLifecycle()
     var url by gitViewModel.gitRepoUrl.collectAsStateWithLifecycle()
     TextField(
@@ -96,9 +97,10 @@ fun GitCloneInput() {
 @Composable
 fun SshKeyManagerInput() {
     val coroutineScope = rememberCoroutineScope()
-    val gitViewModel: GitViewModel = scopedViewModel(
-        factory = GitViewModel.Factory(LocalContext.current.applicationContext)
-    )
+    val appContext = LocalContext.current.applicationContext
+    val gitViewModel: GitViewModel = scopedViewModel {
+        GitViewModel(appContext)
+    }
     var name by gitViewModel.sshKeyName.collectAsStateWithLifecycle()
     var keyStr by gitViewModel.sshKeyStr.collectAsStateWithLifecycle()
     var passphrase by gitViewModel.sshKeyPassphrase.collectAsStateWithLifecycle()

@@ -1,7 +1,5 @@
 package dev.xorkevin.multitool
 
-import android.content.Context
-import android.content.ContextWrapper
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
@@ -149,20 +147,6 @@ fun authWithBiometric(
             .setConfirmationRequired(true).build()
 
     biometricPrompt.authenticate(promptInfo)
-}
-
-inline fun <reified T : FragmentActivity> Context.getActivity(): T? {
-    var context = this
-    while (true) {
-        if (context is T) {
-            return context
-        }
-        if (context is ContextWrapper) {
-            context = context.baseContext
-            continue
-        }
-        return null
-    }
 }
 
 class BiometricAuthViewModel : ViewModel() {

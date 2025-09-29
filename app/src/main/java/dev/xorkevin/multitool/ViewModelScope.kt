@@ -3,6 +3,8 @@
 package dev.xorkevin.multitool
 
 import android.app.Activity
+import android.content.Context
+import android.content.ContextWrapper
 import androidx.activity.compose.LocalActivity
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
@@ -12,6 +14,7 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
@@ -23,21 +26,27 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
-import kotlin.reflect.KType
-import kotlin.reflect.full.createType
-import kotlin.reflect.full.isSubtypeOf
-import kotlin.reflect.typeOf
+import kotlin.reflect.full.isSubclassOf
 import kotlin.uuid.ExperimentalUuidApi
 
 val LocalViewModelScopeContext: ProvidableCompositionLocal<ViewModelScopeContext<*>?> =
     staticCompositionLocalOf { null }
 
 @Composable
-inline fun <reified T : ViewModel> scopedViewModel(factory: ViewModelProvider.Factory? = null): T {
-    val ctx =
-        LocalViewModelScopeContext.current ?: throw IllegalStateException("No scoped view model")
-    val key =
-        ctx.getStoreOwnerKey(typeOf<T>()) ?: throw IllegalStateException("No scoped view model")
+inline fun <reified T : ViewModel> scopedViewModel(noinline factoryFn: (() -> T)? = null): T {
+    val factory = if (factoryFn != null) {
+        scopedViewModelFactory(factoryFn)
+    } else {
+        null
+    }
+    val ctx = LocalViewModelScopeContext.current
+    if (ctx == null) {
+        return viewModel(factory = factory)
+    }
+    val key = ctx.getStoreOwnerKey(T::class)
+    if (key == null) {
+        return viewModel(factory = factory)
+    }
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()
     val storeOwner = storeOwnerViewModel.getStoreOwner(key)
     return viewModel(viewModelStoreOwner = storeOwner, factory = factory)
@@ -84,22 +93,21 @@ private class CompositionObserver(
 data class ViewModelStoreOwnerKey(private val v: Long)
 
 class ViewModelScopeContext<T : ViewModel>(
-    vmClass: KClass<T>,
+    private val vmClass: KClass<T>,
     private val key: ViewModelStoreOwnerKey,
     private val parent: ViewModelScopeContext<*>? = null,
 ) {
-    private val kType = vmClass.createType()
-
-    fun getStoreOwnerKey(type: KType): ViewModelStoreOwnerKey? = getStoreOwnerKey(this, type)
+    fun getStoreOwnerKey(kClass: KClass<*>): ViewModelStoreOwnerKey? =
+        getStoreOwnerKey(this, kClass)
 
     private companion object {
         private tailrec fun getStoreOwnerKey(
-            ctx: ViewModelScopeContext<*>, type: KType
-        ): ViewModelStoreOwnerKey? = if (ctx.kType.isSubtypeOf(type)) {
+            ctx: ViewModelScopeContext<*>, kClass: KClass<*>
+        ): ViewModelStoreOwnerKey? = if (ctx.vmClass.isSubclassOf(kClass)) {
             ctx.key
         } else {
             val parent = ctx.parent ?: return null
-            getStoreOwnerKey(parent, type)
+            getStoreOwnerKey(parent, kClass)
         }
     }
 }
@@ -125,6 +133,22 @@ class StoreOwnerViewModel : ViewModel() {
 
 private class ScopedViewModelStoreOwner : ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
+}
+
+inline fun <reified T : ViewModel> scopedViewModelFactory(noinline factoryFn: () -> T): ViewModelProvider.Factory {
+    return ScopedViewModelFactory(T::class, factoryFn)
+}
+
+class ScopedViewModelFactory<T : ViewModel>(
+    private val vmClass: KClass<T>,
+    private val f: () -> T,
+) : ViewModelProvider.Factory {
+    override fun <U : ViewModel> create(modelClass: Class<U>): U {
+        if (!modelClass.isAssignableFrom(vmClass.java)) {
+            throw IllegalArgumentException("Invalid view model class for factory")
+        }
+        return f() as U
+    }
 }
 
 class MutableViewModelState<T>(private val state: State<T>, private val flow: MutableStateFlow<T>) {
@@ -154,4 +178,18 @@ class MutableViewModelStateFlow<T>(initValue: T) {
     @Composable
     fun collectAsStateWithLifecycle(): MutableViewModelState<T> =
         MutableViewModelState(flow.collectAsStateWithLifecycle(), _flow)
+}
+
+inline fun <reified T : FragmentActivity> Context.getActivity(): T? {
+    var context = this
+    while (true) {
+        if (context is T) {
+            return context
+        }
+        if (context is ContextWrapper) {
+            context = context.baseContext
+            continue
+        }
+        return null
+    }
 }
