@@ -3,6 +3,7 @@
 package dev.xorkevin.multitool
 
 import android.app.Activity
+import android.app.Application
 import android.content.Context
 import android.content.ContextWrapper
 import androidx.activity.compose.LocalActivity
@@ -14,18 +15,23 @@ import androidx.compose.runtime.State
 import androidx.compose.runtime.currentCompositeKeyHashCode
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
+import androidx.compose.ui.platform.LocalContext
 import androidx.fragment.app.FragmentActivity
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.ViewModelStoreOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.CreationExtras
 import androidx.lifecycle.viewmodel.compose.viewModel
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
+import kotlin.reflect.KVisibility
+import kotlin.reflect.full.companionObject
+import kotlin.reflect.full.companionObjectInstance
 import kotlin.reflect.full.isSubclassOf
 import kotlin.uuid.ExperimentalUuidApi
 
@@ -33,9 +39,25 @@ val LocalViewModelScopeContext: ProvidableCompositionLocal<ViewModelScopeContext
     staticCompositionLocalOf { null }
 
 @Composable
-inline fun <reified T : ViewModel> scopedViewModel(noinline factoryFn: (() -> T)? = null): T {
-    val factory = if (factoryFn != null) {
-        scopedViewModelFactory(factoryFn)
+inline fun <reified T : ViewModel> scopedViewModel(noinline factoryFn: ((app: Application) -> T)? = null): T {
+    val app = LocalContext.current.applicationContext as Application
+    val f = if (factoryFn != null) {
+        factoryFn
+    } else {
+        val companionClass = T::class.companionObject
+        if (companionClass != null && companionClass.visibility == KVisibility.PUBLIC && companionClass.isSubclassOf(
+                ScopedViewModelFactory::class
+            )
+        ) {
+            val companion = T::class.companionObjectInstance
+            companion as ScopedViewModelFactory<T>
+            companion::create
+        } else {
+            null
+        }
+    }
+    val factory: ViewModelProvider.Factory? = if (f != null) {
+        ScopedViewModelCreator(T::class, f, app)
     } else {
         null
     }
@@ -50,6 +72,23 @@ inline fun <reified T : ViewModel> scopedViewModel(noinline factoryFn: (() -> T)
     val storeOwnerViewModel: StoreOwnerViewModel = viewModel()
     val storeOwner = storeOwnerViewModel.getStoreOwner(key)
     return viewModel(viewModelStoreOwner = storeOwner, factory = factory)
+}
+
+fun interface ScopedViewModelFactory<T : ViewModel> {
+    fun create(app: Application): T
+}
+
+class ScopedViewModelCreator<T : ViewModel>(
+    private val vmClass: KClass<T>,
+    private val f: (app: Application) -> T,
+    private val app: Application,
+) : ViewModelProvider.Factory {
+    override fun <U : ViewModel> create(modelClass: KClass<U>, extras: CreationExtras): U {
+        if (!vmClass.isSubclassOf(modelClass)) {
+            throw IllegalArgumentException("Invalid view model class for factory")
+        }
+        @Suppress("UNCHECKED_CAST") return f(app) as U
+    }
 }
 
 @Composable
@@ -133,22 +172,6 @@ class StoreOwnerViewModel : ViewModel() {
 
 private class ScopedViewModelStoreOwner : ViewModelStoreOwner {
     override val viewModelStore = ViewModelStore()
-}
-
-inline fun <reified T : ViewModel> scopedViewModelFactory(noinline factoryFn: () -> T): ViewModelProvider.Factory {
-    return ScopedViewModelFactory(T::class, factoryFn)
-}
-
-class ScopedViewModelFactory<T : ViewModel>(
-    private val vmClass: KClass<T>,
-    private val f: () -> T,
-) : ViewModelProvider.Factory {
-    override fun <U : ViewModel> create(modelClass: Class<U>): U {
-        if (!modelClass.isAssignableFrom(vmClass.java)) {
-            throw IllegalArgumentException("Invalid view model class for factory")
-        }
-        return f() as U
-    }
 }
 
 class MutableViewModelState<T>(private val state: State<T>, private val flow: MutableStateFlow<T>) {

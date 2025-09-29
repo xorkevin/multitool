@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "d8baa734563e6d75e42ac7fa47297039",
+    "identityHash": "d6af5d251c935bb06b7054eec42e53a2",
     "entities": [
       {
-        "tableName": "gitviewmodel_ssh_keys",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `key_str` TEXT NOT NULL, `passphrase` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "tableName": "keystore_ssh_keys",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `enc_key_str` TEXT NOT NULL, `enc_passphrase` TEXT NOT NULL, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
@@ -15,14 +15,14 @@
             "notNull": true
           },
           {
-            "fieldPath": "keyStr",
-            "columnName": "key_str",
+            "fieldPath": "encKeyStr",
+            "columnName": "enc_key_str",
             "affinity": "TEXT",
             "notNull": true
           },
           {
-            "fieldPath": "passphrase",
-            "columnName": "passphrase",
+            "fieldPath": "encPassphrase",
+            "columnName": "enc_passphrase",
             "affinity": "TEXT",
             "notNull": true
           }
@@ -37,7 +37,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd8baa734563e6d75e42ac7fa47297039')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd6af5d251c935bb06b7054eec42e53a2')"
     ]
   }
 }

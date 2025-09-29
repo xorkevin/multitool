@@ -1,5 +1,6 @@
 package dev.xorkevin.multitool
 
+import android.app.Application
 import android.content.Context
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -19,25 +20,13 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
-import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import androidx.room.ColumnInfo
-import androidx.room.Dao
-import androidx.room.Database
-import androidx.room.Entity
-import androidx.room.Insert
-import androidx.room.Query
-import androidx.room.Room
-import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.util.security.SecurityUtils
@@ -60,10 +49,7 @@ fun GitTool() = ViewModelScope(GitViewModel::class) {
 
 @Composable
 fun GitCloneInput() {
-    val appContext = LocalContext.current.applicationContext
-    val gitViewModel: GitViewModel = scopedViewModel {
-        GitViewModel(appContext)
-    }
+    val gitViewModel: GitViewModel = scopedViewModel()
     var name by gitViewModel.gitRepoName.collectAsStateWithLifecycle()
     var url by gitViewModel.gitRepoUrl.collectAsStateWithLifecycle()
     TextField(
@@ -97,10 +83,7 @@ fun GitCloneInput() {
 @Composable
 fun SshKeyManagerInput() {
     val coroutineScope = rememberCoroutineScope()
-    val appContext = LocalContext.current.applicationContext
-    val gitViewModel: GitViewModel = scopedViewModel {
-        GitViewModel(appContext)
-    }
+    val gitViewModel: GitViewModel = scopedViewModel()
     var name by gitViewModel.sshKeyName.collectAsStateWithLifecycle()
     var keyStr by gitViewModel.sshKeyStr.collectAsStateWithLifecycle()
     var passphrase by gitViewModel.sshKeyPassphrase.collectAsStateWithLifecycle()
@@ -229,60 +212,9 @@ fun SshKeyManagerInput() {
     }
 }
 
-class GitViewModel(private val appContext: Context) : ViewModel() {
-    @Entity(tableName = "gitviewmodel_ssh_keys", primaryKeys = ["name"])
-    data class SshKey(
-        @ColumnInfo(name = "name") val name: String,
-        @ColumnInfo(name = "key_str") val keyStr: String,
-        @ColumnInfo(name = "passphrase") val passphrase: String,
-    )
-
-    data class SshKeyNameTuple(
-        @ColumnInfo(name = "name") val name: String?,
-    )
-
-    @Dao
-    interface KeyDao {
-        @Query("SELECT * FROM gitviewmodel_ssh_keys WHERE name = :name")
-        suspend fun getByName(name: String): SshKey?
-
-        @Query("SELECT name FROM gitviewmodel_ssh_keys")
-        suspend fun getAll(): List<SshKeyNameTuple>
-
-        @Insert
-        suspend fun insertAll(vararg sshKeys: SshKey)
-
-        @Query("DELETE FROM gitviewmodel_ssh_keys WHERE name = :name")
-        suspend fun deleteByName(name: String): Int
-    }
-
-    @Database(entities = [SshKey::class], version = 1)
-    abstract class DB : RoomDatabase() {
-        abstract fun keyDao(): KeyDao
-
-        companion object {
-            private val instanceLock = Mutex()
-            private var instance: DB? = null
-
-            suspend fun getInstance(appContext: Context): DB {
-                instance?.let { return it }
-                instanceLock.withLock {
-                    var i = instance
-                    if (i != null) {
-                        return i
-                    }
-                    i = Room.databaseBuilder(
-                        appContext, DB::class.java, "gitviewmodel-db"
-                    ).build()
-                    instance = i
-                    return i
-                }
-            }
-        }
-    }
-
+class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewModel() {
     private suspend fun loadSshKey(name: String): Result<KeyPair> {
-        val db = DB.getInstance(appContext)
+        val db = keyStore.keyDB
         val key = withContext(Dispatchers.IO) {
             try {
                 return@withContext Result.success(db.keyDao().getByName(name))
@@ -296,7 +228,7 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
             }
             return withContext(Dispatchers.Default) {
                 // TODO: decrypt passphrase
-                loadSSHPrivateKey(it.keyStr, it.passphrase)
+                loadSSHPrivateKey(it.encKeyStr, it.encPassphrase)
             }
         }
     }
@@ -305,7 +237,7 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
     val getAllKeysRes = _getAllKeysRes.flow
 
     suspend fun getAllKeys() {
-        val db = DB.getInstance(appContext)
+        val db = keyStore.keyDB
         withContext(Dispatchers.IO) {
             try {
                 val keys = db.keyDao().getAll().map { it.name!! }
@@ -339,17 +271,17 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
             _storeSshKeyRes.update { res }
             return res
         }
-        val db = DB.getInstance(appContext)
+        val db = keyStore.keyDB
         withContext(Dispatchers.Default) {
             // TODO: encrypt passphrase
         }
         return withContext(Dispatchers.IO) {
             try {
                 db.keyDao().insertAll(
-                    SshKey(
+                    KeyStoreService.SshKey(
                         name = name,
-                        keyStr = keyStr,
-                        passphrase = passphrase,
+                        encKeyStr = keyStr,
+                        encPassphrase = passphrase,
                     )
                 )
                 val res = Result.success(Unit)
@@ -370,7 +302,7 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
     suspend fun deleteSshKey(
         name: String
     ): Result<Unit> {
-        val db = DB.getInstance(appContext)
+        val db = keyStore.keyDB
         return withContext(Dispatchers.IO) {
             try {
                 // TODO: encrypt passphrase
@@ -393,7 +325,7 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
     val gitRepoName = MutableViewModelStateFlow("")
     val gitRepoUrl = MutableViewModelStateFlow("")
 
-    private val rootDir = appContext.getDir("gittool", Context.MODE_PRIVATE)
+
     private val sshHomeDir = File(rootDir, "ssh/home")
     private val sshDir = File(sshHomeDir, "ssh")
 
@@ -442,12 +374,12 @@ class GitViewModel(private val appContext: Context) : ViewModel() {
         }
     }
 
-    class Factory(private val appContext: Context) : ViewModelProvider.Factory {
-        override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            if (!modelClass.isAssignableFrom(GitViewModel::class.java)) {
-                throw IllegalArgumentException("Invalid view model class for factory")
-            }
-            return GitViewModel(appContext) as T
+    companion object : ScopedViewModelFactory<GitViewModel> {
+        override fun create(app: Application): GitViewModel {
+            app as MainApplication
+            val keyStore = app.container.keyStore
+            val rootDir = app.getDir("ssh_key_manager", Context.MODE_PRIVATE)
+            return GitViewModel(keyStore, rootDir)
         }
     }
 }
