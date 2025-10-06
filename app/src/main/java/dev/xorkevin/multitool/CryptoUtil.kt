@@ -1,6 +1,7 @@
 package dev.xorkevin.multitool
 
 import org.bouncycastle.crypto.InvalidCipherTextException
+import org.bouncycastle.crypto.digests.Blake2bDigest
 import org.bouncycastle.crypto.engines.ChaChaEngine
 import org.bouncycastle.crypto.modes.ChaCha20Poly1305
 import org.bouncycastle.crypto.params.KeyParameter
@@ -110,6 +111,17 @@ class CryptoUtil {
             } catch (e: InvalidCipherTextException) {
                 return Result.failure(e)
             }
+            return Result.success(out)
+        }
+
+        fun blake2b(inp: ByteArray, length: Int): Result<ByteArray> {
+            if (length !in 1..64) {
+                return Result.failure(IllegalArgumentException("length must be between 1 and 64"))
+            }
+            val digest = Blake2bDigest(length * 8)
+            digest.update(inp, 0, inp.size)
+            val out = ByteArray(length)
+            digest.doFinal(out, 0)
             return Result.success(out)
         }
     }
