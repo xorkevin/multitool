@@ -126,7 +126,6 @@ fun authWithBiometric(
     onSuccess: () -> Unit,
     onError: (err: String) -> Unit,
 ) {
-
     val biometricPrompt = BiometricPrompt(
         activity, object : BiometricPrompt.AuthenticationCallback() {
             override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
@@ -141,12 +140,57 @@ fun authWithBiometric(
             }
         })
 
-    val promptInfo =
-        BiometricPrompt.PromptInfo.Builder().setTitle(title).setNegativeButtonText("Cancel")
-            .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-            .setConfirmationRequired(true).build()
-
+    val promptInfo = BiometricPrompt.PromptInfo.Builder().run {
+        setTitle(title)
+        setNegativeButtonText("Cancel")
+        setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        setConfirmationRequired(true)
+        build()
+    }
     biometricPrompt.authenticate(promptInfo)
+}
+
+fun authWithBiometricCrypto(
+    title: String,
+    activity: FragmentActivity,
+    onSuccess: (o: BiometricPrompt.CryptoObject) -> Unit,
+    onError: (err: String) -> Unit,
+    cryptoObject: BiometricPrompt.CryptoObject,
+): BiometricAuthCanceller {
+    val biometricPrompt = BiometricPrompt(
+        activity, object : BiometricPrompt.AuthenticationCallback() {
+            override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
+                val o = result.cryptoObject
+                if (o != null) {
+                    onSuccess(o)
+                } else {
+                    onError("CryptoObject is null")
+                }
+            }
+
+            override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
+                onError(errString.toString())
+            }
+
+            override fun onAuthenticationFailed() {
+            }
+        })
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder().run {
+        setTitle(title)
+        setNegativeButtonText("Cancel")
+        setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
+        setConfirmationRequired(false)
+        build()
+    }
+    biometricPrompt.authenticate(promptInfo, cryptoObject)
+    return BiometricAuthCanceller(biometricPrompt)
+}
+
+class BiometricAuthCanceller(private val prompt: BiometricPrompt) {
+    fun cancel() {
+        prompt.cancelAuthentication()
+    }
 }
 
 class BiometricAuthViewModel : ViewModel() {

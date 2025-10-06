@@ -217,7 +217,7 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
         val db = keyStore.keyDB
         val key = withContext(Dispatchers.IO) {
             try {
-                return@withContext Result.success(db.keyDao().getByName(name))
+                return@withContext Result.success(db.sshKeyDao().getByName(name))
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
             }
@@ -240,7 +240,7 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
         val db = keyStore.keyDB
         withContext(Dispatchers.IO) {
             try {
-                val keys = db.keyDao().getAll().map { it.name!! }
+                val keys = db.sshKeyDao().getAll().map { it.name!! }
                 _getAllKeysRes.update { Result.success(keys) }
             } catch (e: Exception) {
                 _getAllKeysRes.update { Result.failure(e) }
@@ -277,7 +277,7 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
         }
         return withContext(Dispatchers.IO) {
             try {
-                db.keyDao().insertAll(
+                db.sshKeyDao().insertAll(
                     KeyStoreService.SshKey(
                         name = name,
                         encKeyStr = keyStr,
@@ -306,7 +306,7 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
         return withContext(Dispatchers.IO) {
             try {
                 // TODO: encrypt passphrase
-                db.keyDao().deleteByName(name)
+                db.sshKeyDao().deleteByName(name)
                 val res = Result.success(Unit)
                 _deleteSshKeyRes.update { res }
                 return@withContext res
