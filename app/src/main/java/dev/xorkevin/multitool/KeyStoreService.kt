@@ -53,7 +53,7 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    private fun generateAndroidKeyStoreKey(name: String): Result<SecretKey> {
+    private fun generateAndroidKeyStoreKey(name: String): Result<Unit> {
         try {
             val keyGenerator = KeyGenerator.getInstance("ChaCha20", "AndroidKeyStore")
             keyGenerator.init(
@@ -69,16 +69,20 @@ class KeyStoreService(appContext: Context) {
                     setUserAuthenticationRequired(true)
                     build()
                 })
-            return Result.success(keyGenerator.generateKey())
+            keyGenerator.generateKey()
+            return Result.success(Unit)
         } catch (e: Exception) {
             return Result.failure(e)
         }
     }
 
-    private suspend fun hasAndroidKeyStoreKey(name: String): Result<Boolean> {
+    private suspend fun deleteAndroidKeyStoreKey(name: String): Result<Unit> {
         val keyStore = getAndroidKeyStore().getOrElse { return Result.failure(it) }
         return try {
-            Result.success(keyStore.containsAlias(name))
+            if (keyStore.containsAlias(name)) {
+                keyStore.deleteEntry(name)
+            }
+            Result.success(Unit)
         } catch (e: Exception) {
             Result.failure(e)
         }
@@ -87,6 +91,11 @@ class KeyStoreService(appContext: Context) {
     private suspend fun getAndroidKeyStoreKeyCipher(name: String, mode: Int): Result<Cipher> {
         val keyStore = getAndroidKeyStore().getOrElse { return Result.failure(it) }
         return try {
+            if (!keyStore.containsAlias(name)) {
+                withContext(Dispatchers.Default) {
+                    generateAndroidKeyStoreKey(name)
+                }.getOrElse { return Result.failure(it) }
+            }
             val sk = keyStore.getKey(name, null) as SecretKey
             Result.success(Cipher.getInstance("ChaCha20/Poly1305/NoPadding").apply {
                 init(mode, sk)
@@ -119,9 +128,6 @@ class KeyStoreService(appContext: Context) {
                 return Result.success(it)
             }
 
-            if (!hasAndroidKeyStoreKey(ROOT_KEY_NAME).getOrElse { return Result.failure(it) }) {
-                return Result.failure(Exception("No biometric key"))
-            }
             val lockedCipher = getAndroidKeyStoreKeyCipher(
                 ROOT_KEY_NAME, Cipher.DECRYPT_MODE
             ).getOrElse { return Result.failure(it) }
@@ -164,6 +170,76 @@ class KeyStoreService(appContext: Context) {
             }.getOrElse { return Result.failure(it) }
             rootKey = key
             return Result.success(key)
+        }
+    }
+
+    suspend fun setRootKey(key: ByteArray) {
+        rootKeyMutex.withLock {
+            rootKey = key
+        }
+    }
+
+    suspend fun encryptRootKey(key: ByteArray, activityCtx: Context): Result<Unit> {
+        val activity: FragmentActivity? = activityCtx.getActivity()
+        if (activity == null) {
+            return Result.failure(Exception("No activity"))
+        }
+
+        rootKeyMutex.withLock {
+            rootKey = null
+
+            val lockedCipher = getAndroidKeyStoreKeyCipher(
+                ROOT_KEY_NAME, Cipher.ENCRYPT_MODE
+            ).getOrElse { return Result.failure(it) }
+
+            val cipher = suspendCancellableCoroutine { continuation ->
+                val canceller = authWithBiometricCrypto(
+                    "Unlock Vault",
+                    activity,
+                    onSuccess = { continuation.resume(Result.success(it)) },
+                    onError = { continuation.resume(Result.failure(Exception(it))) },
+                    cryptoObject = BiometricPrompt.CryptoObject(lockedCipher)
+                )
+                continuation.invokeOnCancellation {
+                    canceller.cancel()
+                }
+            }.getOrElse { return Result.failure(it) }.cipher
+                ?: return Result.failure(Exception("No cipher"))
+
+            val encKeyBytes = withContext(Dispatchers.Default) {
+                try {
+                    Result.success(cipher.doFinal(key))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) }
+            val encKey = base64URLRaw.encode(encKeyBytes)
+
+            return withContext(Dispatchers.IO) {
+                try {
+                    keyDB.rootKeyDao().insertAll(RootKey(ROOT_KEY_NAME, encKey))
+                    Result.success(Unit)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+        }
+    }
+
+    suspend fun deleteRootKey(): Result<Unit> {
+        rootKeyMutex.withLock {
+            rootKey = null
+
+            withContext(Dispatchers.IO) {
+                try {
+                    keyDB.rootKeyDao().deleteByName(ROOT_KEY_NAME)
+                    Result.success(Unit)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) }
+            deleteAndroidKeyStoreKey(ROOT_KEY_NAME).getOrElse { return Result.failure(it) }
+            return Result.success(Unit)
         }
     }
 
