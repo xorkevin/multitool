@@ -54,7 +54,7 @@ class MainActivity : FragmentActivity() {
 object Route {
     object Tool {
         @Serializable
-        object Home
+        data object Home
 
         @Serializable
         data object Hash
@@ -74,6 +74,9 @@ object Route {
         @Serializable
         data object Biometrics
     }
+
+    @Serializable
+    data object KeyManager
 }
 
 data class RouteEntry<T : Any>(val route: T, val name: String)
@@ -85,6 +88,7 @@ val routes = listOf(
     RouteEntry(Route.Tool.QRScanner, "QR Scanner"),
     RouteEntry(Route.Tool.Git, "Git"),
     RouteEntry(Route.Tool.Biometrics, "Biometrics"),
+    RouteEntry(Route.KeyManager, "Key Manager"),
 )
 
 @Composable
@@ -145,9 +149,7 @@ fun App() {
                                 }
                             }
                         }) {
-                            Icon(
-                                imageVector = Icons.Filled.Menu, contentDescription = "Tool Drawer"
-                            )
+                            Icon(imageVector = Icons.Filled.Menu, contentDescription = "Navigation")
                         }
                     },
                     scrollBehavior = scrollBehavior,
@@ -179,6 +181,9 @@ fun App() {
                     }
                     composable<Route.Tool.Biometrics> {
                         BiometricAuthTool()
+                    }
+                    composable<Route.KeyManager> {
+                        KeyManager()
                     }
                 }
             }

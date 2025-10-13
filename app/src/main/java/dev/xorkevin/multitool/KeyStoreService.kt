@@ -17,6 +17,9 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.mapLatest
+import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -25,6 +28,7 @@ import java.security.KeyStore
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import kotlin.coroutines.resume
 import kotlin.io.encoding.Base64
 
@@ -55,13 +59,15 @@ class KeyStoreService(appContext: Context) {
 
     private fun generateAndroidKeyStoreKey(name: String): Result<Unit> {
         try {
-            val keyGenerator = KeyGenerator.getInstance("ChaCha20", "AndroidKeyStore")
+            val keyGenerator =
+                KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
             keyGenerator.init(
                 KeyGenParameterSpec.Builder(
                     name, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT
                 ).run {
-                    // setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+                    setBlockModes(KeyProperties.BLOCK_MODE_GCM)
                     setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+                    setKeySize(256)
                     setInvalidatedByBiometricEnrollment(true)
                     setRandomizedEncryptionRequired(true)
                     setUnlockedDeviceRequired(true)
@@ -88,7 +94,11 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    private suspend fun getAndroidKeyStoreKeyCipher(name: String, mode: Int): Result<Cipher> {
+    private suspend fun getAndroidKeyStoreKeyCipher(
+        name: String,
+        mode: Int,
+        nonce: ByteArray? = null,
+    ): Result<Cipher> {
         val keyStore = getAndroidKeyStore().getOrElse { return Result.failure(it) }
         return try {
             if (!keyStore.containsAlias(name)) {
@@ -97,8 +107,12 @@ class KeyStoreService(appContext: Context) {
                 }.getOrElse { return Result.failure(it) }
             }
             val sk = keyStore.getKey(name, null) as SecretKey
-            Result.success(Cipher.getInstance("ChaCha20/Poly1305/NoPadding").apply {
-                init(mode, sk)
+            Result.success(Cipher.getInstance("AES/GCM/NoPadding").apply {
+                if (mode == Cipher.DECRYPT_MODE) {
+                    init(mode, sk, GCMParameterSpec(128, nonce))
+                } else {
+                    init(mode, sk)
+                }
             })
         } catch (e: Exception) {
             Result.failure(e)
@@ -107,15 +121,21 @@ class KeyStoreService(appContext: Context) {
 
     private val ROOT_KEY_NAME = "root_key"
     private val rootKeyMutex = Mutex()
+    private val rootKeyState = MutableStateFlow<ByteArray?>(null)
 
-    @Volatile
-    private var rootKey: ByteArray? = null
+    val unlockState = rootKeyState.mapLatest { it != null }
 
     private val base64URLRaw = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
-    suspend fun getRootKey(activityCtx: Context): Result<ByteArray> {
-        rootKey?.let {
-            return Result.success(it)
+    suspend fun lock() {
+        rootKeyMutex.withLock {
+            rootKeyState.update { null }
+        }
+    }
+
+    suspend fun unlock(activityCtx: Context): Result<Unit> {
+        rootKeyState.value?.let {
+            return Result.success(Unit)
         }
 
         val activity: FragmentActivity? = activityCtx.getActivity()
@@ -124,13 +144,9 @@ class KeyStoreService(appContext: Context) {
         }
 
         rootKeyMutex.withLock {
-            rootKey?.let {
-                return Result.success(it)
+            rootKeyState.value?.let {
+                return Result.success(Unit)
             }
-
-            val lockedCipher = getAndroidKeyStoreKeyCipher(
-                ROOT_KEY_NAME, Cipher.DECRYPT_MODE
-            ).getOrElse { return Result.failure(it) }
 
             val encKey = withContext(Dispatchers.IO) {
                 try {
@@ -141,11 +157,19 @@ class KeyStoreService(appContext: Context) {
             }.getOrElse { return Result.failure(it) } ?: return Result.failure(
                 Exception("No root key")
             )
-            val encKeyBytes = try {
-                base64URLRaw.decode(encKey.encRootKey.toByteArray())
+            val (encKeyBytes, nonce) = try {
+                val split = encKey.encRootKey.split("$", limit = 2)
+                if (split.size != 2) {
+                    return Result.failure(Exception("Malformed root key"))
+                }
+                base64URLRaw.decode(split[1]) to base64URLRaw.decode(split[0])
             } catch (e: Exception) {
                 return Result.failure(e)
             }
+
+            val lockedCipher = getAndroidKeyStoreKeyCipher(
+                ROOT_KEY_NAME, Cipher.DECRYPT_MODE, nonce,
+            ).getOrElse { return Result.failure(it) }
 
             val cipher = suspendCancellableCoroutine { continuation ->
                 val canceller = authWithBiometricCrypto(
@@ -168,14 +192,14 @@ class KeyStoreService(appContext: Context) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
-            rootKey = key
-            return Result.success(key)
+            rootKeyState.update { key }
+            return Result.success(Unit)
         }
     }
 
     suspend fun setRootKey(key: ByteArray) {
         rootKeyMutex.withLock {
-            rootKey = key
+            rootKeyState.update { key }
         }
     }
 
@@ -186,7 +210,7 @@ class KeyStoreService(appContext: Context) {
         }
 
         rootKeyMutex.withLock {
-            rootKey = null
+            rootKeyState.update { null }
 
             val lockedCipher = getAndroidKeyStoreKeyCipher(
                 ROOT_KEY_NAME, Cipher.ENCRYPT_MODE
@@ -213,7 +237,7 @@ class KeyStoreService(appContext: Context) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
-            val encKey = base64URLRaw.encode(encKeyBytes)
+            val encKey = "${base64URLRaw.encode(cipher.iv)}$${base64URLRaw.encode(encKeyBytes)}"
 
             return withContext(Dispatchers.IO) {
                 try {
@@ -228,7 +252,7 @@ class KeyStoreService(appContext: Context) {
 
     suspend fun deleteRootKey(): Result<Unit> {
         rootKeyMutex.withLock {
-            rootKey = null
+            rootKeyState.update { null }
 
             withContext(Dispatchers.IO) {
                 try {
@@ -243,11 +267,15 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    val keyDB = Room.databaseBuilder(
+    fun getSshKeyDao(): SshKeyDao {
+        return keyDB.sshKeyDao()
+    }
+
+    private val keyDB = Room.databaseBuilder(
         appContext, DB::class.java, "keystore-db"
     ).build()
 
-    @Database(entities = [SshKey::class], version = 1)
+    @Database(entities = [RootKey::class, SshKey::class], version = 1)
     abstract class DB : RoomDatabase() {
         abstract fun rootKeyDao(): RootKeyDao
         abstract fun sshKeyDao(): SshKeyDao

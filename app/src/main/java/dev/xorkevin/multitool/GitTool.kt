@@ -214,10 +214,10 @@ fun SshKeyManagerInput() {
 
 class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewModel() {
     private suspend fun loadSshKey(name: String): Result<KeyPair> {
-        val db = keyStore.keyDB
+        val db = keyStore.getSshKeyDao()
         val key = withContext(Dispatchers.IO) {
             try {
-                return@withContext Result.success(db.sshKeyDao().getByName(name))
+                return@withContext Result.success(db.getByName(name))
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
             }
@@ -237,10 +237,10 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
     val getAllKeysRes = _getAllKeysRes.flow
 
     suspend fun getAllKeys() {
-        val db = keyStore.keyDB
+        val db = keyStore.getSshKeyDao()
         withContext(Dispatchers.IO) {
             try {
-                val keys = db.sshKeyDao().getAll().map { it.name!! }
+                val keys = db.getAll().map { it.name!! }
                 _getAllKeysRes.update { Result.success(keys) }
             } catch (e: Exception) {
                 _getAllKeysRes.update { Result.failure(e) }
@@ -271,13 +271,13 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
             _storeSshKeyRes.update { res }
             return res
         }
-        val db = keyStore.keyDB
+        val db = keyStore.getSshKeyDao()
         withContext(Dispatchers.Default) {
             // TODO: encrypt passphrase
         }
         return withContext(Dispatchers.IO) {
             try {
-                db.sshKeyDao().insertAll(
+                db.insertAll(
                     KeyStoreService.SshKey(
                         name = name,
                         encKeyStr = keyStr,
@@ -302,11 +302,11 @@ class GitViewModel(private val keyStore: KeyStoreService, rootDir: File) : ViewM
     suspend fun deleteSshKey(
         name: String
     ): Result<Unit> {
-        val db = keyStore.keyDB
+        val db = keyStore.getSshKeyDao()
         return withContext(Dispatchers.IO) {
             try {
                 // TODO: encrypt passphrase
-                db.sshKeyDao().deleteByName(name)
+                db.deleteByName(name)
                 val res = Result.success(Unit)
                 _deleteSshKeyRes.update { res }
                 return@withContext res

@@ -2,8 +2,32 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "d6af5d251c935bb06b7054eec42e53a2",
+    "identityHash": "f3dbdf67b2348129fc175cc64eb7bb92",
     "entities": [
+      {
+        "tableName": "keystore_root_keys",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `enc_root_key` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "fields": [
+          {
+            "fieldPath": "name",
+            "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "encRootKey",
+            "columnName": "enc_root_key",
+            "affinity": "TEXT",
+            "notNull": true
+          }
+        ],
+        "primaryKey": {
+          "autoGenerate": false,
+          "columnNames": [
+            "name"
+          ]
+        }
+      },
       {
         "tableName": "keystore_ssh_keys",
         "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `enc_key_str` TEXT NOT NULL, `enc_passphrase` TEXT NOT NULL, PRIMARY KEY(`name`))",
@@ -37,7 +61,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'd6af5d251c935bb06b7054eec42e53a2')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f3dbdf67b2348129fc175cc64eb7bb92')"
     ]
   }
 }
