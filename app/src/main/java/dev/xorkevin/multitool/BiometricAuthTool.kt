@@ -156,6 +156,7 @@ fun authWithBiometricCrypto(
     onSuccess: (o: BiometricPrompt.CryptoObject) -> Unit,
     onError: (err: String) -> Unit,
     cryptoObject: BiometricPrompt.CryptoObject,
+    confirmationRequired: Boolean = false,
 ): BiometricAuthCanceller {
     val biometricPrompt = BiometricPrompt(
         activity, object : BiometricPrompt.AuthenticationCallback() {
@@ -180,7 +181,7 @@ fun authWithBiometricCrypto(
         setTitle(title)
         setNegativeButtonText("Cancel")
         setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_STRONG)
-        setConfirmationRequired(false)
+        setConfirmationRequired(confirmationRequired)
         build()
     }
     biometricPrompt.authenticate(promptInfo, cryptoObject)

@@ -55,4 +55,28 @@ class CryptoUtilTest {
             CryptoUtil.blake2b("hello, world".toByteArray(), 64).getOrThrow().toHexString()
         )
     }
+
+    @Test
+    fun argon2id() {
+        val testNonce = "12345678901234567890123456789012"
+        Assert.assertEquals(
+            "5bfea46a014e400602e51dcbe1f6f904d41227ccf795d429bc63d79c49947909",
+            CryptoUtil.argon2id("".toByteArray(), testNonce.toByteArray(), 19456, 2, 1, 32)
+                .getOrThrow()
+                .toHexString()
+        )
+        Assert.assertEquals(
+            "4686149bbcc87db8f2bfdbd4420e4653b750c8b793367e23aaf486f1b6fe413b",
+            CryptoUtil.argon2id(
+                "hello, world".toByteArray(),
+                testNonce.toByteArray(),
+                19456,
+                2,
+                1,
+                32
+            )
+                .getOrThrow()
+                .toHexString()
+        )
+    }
 }

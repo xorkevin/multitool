@@ -18,13 +18,18 @@ import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
 import java.security.KeyStore
+import java.security.MessageDigest
+import java.security.SecureRandom
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -124,6 +129,8 @@ class KeyStoreService(appContext: Context) {
     private val rootKeyState = MutableStateFlow<ByteArray?>(null)
 
     val unlockState = rootKeyState.mapLatest { it != null }
+    private val _biometricState = MutableStateFlow(false)
+    val biometricState = _biometricState.asStateFlow()
 
     private val base64URLRaw = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
@@ -133,7 +140,7 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    suspend fun unlock(activityCtx: Context): Result<Unit> {
+    suspend fun biometricUnlock(activityCtx: Context): Result<Unit> {
         rootKeyState.value?.let {
             return Result.success(Unit)
         }
@@ -157,6 +164,17 @@ class KeyStoreService(appContext: Context) {
             }.getOrElse { return Result.failure(it) } ?: return Result.failure(
                 Exception("No root key")
             )
+
+            if (encKey.encRootKey == "") {
+                return Result.failure(Exception("Biometric unlock disabled"))
+            }
+
+            val encKeyHashBytes = try {
+                base64URLRaw.decode(encKey.keyHash)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+
             val (encKeyBytes, nonce) = try {
                 val split = encKey.encRootKey.split("$", limit = 2)
                 if (split.size != 2) {
@@ -173,7 +191,7 @@ class KeyStoreService(appContext: Context) {
 
             val cipher = suspendCancellableCoroutine { continuation ->
                 val canceller = authWithBiometricCrypto(
-                    "Unlock Vault",
+                    "Unlock vault",
                     activity,
                     onSuccess = { continuation.resume(Result.success(it)) },
                     onError = { continuation.resume(Result.failure(Exception(it))) },
@@ -192,56 +210,125 @@ class KeyStoreService(appContext: Context) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
+
+            val keyHash = withContext(Dispatchers.Default) {
+                CryptoUtil.blake2b(key, 32)
+            }.getOrElse { return Result.failure(it) }
+            if (!MessageDigest.isEqual(encKeyHashBytes, keyHash)) {
+                return Result.failure(Exception("Invalid key"))
+            }
+
             rootKeyState.update { key }
+            _biometricState.update { true }
             return Result.success(Unit)
         }
     }
 
-    suspend fun setRootKey(key: ByteArray) {
+    suspend fun passwordUnlock(password: ByteArray): Result<Unit> {
+        rootKeyState.value?.let {
+            return Result.success(Unit)
+        }
+
         rootKeyMutex.withLock {
+            rootKeyState.value?.let {
+                return Result.success(Unit)
+            }
+
+            val encKey = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(keyDB.rootKeyDao().getByName(ROOT_KEY_NAME))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) } ?: return Result.failure(
+                Exception("No root key")
+            )
+
+            val kdfParams: KDFParams = try {
+                Json.decodeFromString(encKey.kdfParams)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+            val salt = try {
+                base64URLRaw.decode(kdfParams.salt)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+            val encKeyHashBytes = try {
+                base64URLRaw.decode(encKey.keyHash)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+
+            val key = withContext(Dispatchers.Default) {
+                CryptoUtil.argon2id(
+                    password, salt, kdfParams.mem, kdfParams.iter, kdfParams.par, kdfParams.length
+                )
+            }.getOrElse { return Result.failure(it) }
+
+            val keyHash = withContext(Dispatchers.Default) {
+                CryptoUtil.blake2b(key, 32)
+            }.getOrElse { return Result.failure(it) }
+            if (!MessageDigest.isEqual(encKeyHashBytes, keyHash)) {
+                return Result.failure(Exception("Invalid password"))
+            }
+
             rootKeyState.update { key }
+            _biometricState.update { encKey.encRootKey != "" }
+            return Result.success(Unit)
         }
     }
 
-    suspend fun encryptRootKey(key: ByteArray, activityCtx: Context): Result<Unit> {
-        val activity: FragmentActivity? = activityCtx.getActivity()
-        if (activity == null) {
-            return Result.failure(Exception("No activity"))
+    @Serializable
+    data class KDFParams(
+        val kind: String,
+        val salt: String,
+        val mem: Int,
+        val iter: Int,
+        val par: Int,
+        val length: Int
+    )
+
+    suspend fun generateRootKey(password: ByteArray): Result<Unit> {
+        rootKeyState.value?.let {
+            return Result.success(Unit)
         }
 
         rootKeyMutex.withLock {
-            rootKeyState.update { null }
+            rootKeyState.value?.let {
+                return Result.success(Unit)
+            }
 
-            val lockedCipher = getAndroidKeyStoreKeyCipher(
-                ROOT_KEY_NAME, Cipher.ENCRYPT_MODE
-            ).getOrElse { return Result.failure(it) }
-
-            val cipher = suspendCancellableCoroutine { continuation ->
-                val canceller = authWithBiometricCrypto(
-                    "Unlock Vault",
-                    activity,
-                    onSuccess = { continuation.resume(Result.success(it)) },
-                    onError = { continuation.resume(Result.failure(Exception(it))) },
-                    cryptoObject = BiometricPrompt.CryptoObject(lockedCipher)
-                )
-                continuation.invokeOnCancellation {
-                    canceller.cancel()
-                }
-            }.getOrElse { return Result.failure(it) }.cipher
-                ?: return Result.failure(Exception("No cipher"))
-
-            val encKeyBytes = withContext(Dispatchers.Default) {
+            val existingKey = withContext(Dispatchers.IO) {
                 try {
-                    Result.success(cipher.doFinal(key))
+                    Result.success(keyDB.rootKeyDao().getByName(ROOT_KEY_NAME))
                 } catch (e: Exception) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
-            val encKey = "${base64URLRaw.encode(cipher.iv)}$${base64URLRaw.encode(encKeyBytes)}"
+            if (existingKey != null) {
+                return Result.success(Unit)
+            }
+
+            val salt = ByteArray(32)
+            SecureRandom.getInstanceStrong().nextBytes(salt)
+            val paramsStr = Json.encodeToString(
+                KDFParams(
+                    "argon2id19", base64URLRaw.encode(salt), 19456, 2, 1, 32
+                )
+            )
+            val key = withContext(Dispatchers.Default) {
+                CryptoUtil.argon2id(password, salt, 19456, 2, 1, 32)
+            }.getOrElse { return Result.failure(it) }
+
+            val keyHash = base64URLRaw.encode(withContext(Dispatchers.Default) {
+                CryptoUtil.blake2b(key, 32)
+            }.getOrElse { return Result.failure(it) })
 
             return withContext(Dispatchers.IO) {
                 try {
-                    keyDB.rootKeyDao().insertAll(RootKey(ROOT_KEY_NAME, encKey))
+                    keyDB.rootKeyDao().insertAll(RootKey(ROOT_KEY_NAME, keyHash, paramsStr, ""))
+                    _biometricState.update { false }
                     Result.success(Unit)
                 } catch (e: Exception) {
                     Result.failure(e)
@@ -262,6 +349,105 @@ class KeyStoreService(appContext: Context) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
+            _biometricState.update { false }
+            deleteAndroidKeyStoreKey(ROOT_KEY_NAME).getOrElse { return Result.failure(it) }
+            return Result.success(Unit)
+        }
+    }
+
+    suspend fun setupBiometric(activityCtx: Context): Result<Unit> {
+        val activity: FragmentActivity? = activityCtx.getActivity()
+        if (activity == null) {
+            return Result.failure(Exception("No activity"))
+        }
+
+        rootKeyMutex.withLock {
+            val key = rootKeyState.value
+            if (key == null) {
+                return Result.failure(Exception("Vault is locked"))
+            }
+
+            val encKey = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(keyDB.rootKeyDao().getByName(ROOT_KEY_NAME))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) } ?: return Result.failure(
+                Exception("No root key")
+            )
+
+            if (encKey.encRootKey != "") {
+                return Result.success(Unit)
+            }
+
+            val encKeyHashBytes = try {
+                base64URLRaw.decode(encKey.keyHash)
+            } catch (e: Exception) {
+                return Result.failure(e)
+            }
+
+            val keyHash = withContext(Dispatchers.Default) {
+                CryptoUtil.blake2b(key, 32)
+            }.getOrElse { return Result.failure(it) }
+            if (!MessageDigest.isEqual(encKeyHashBytes, keyHash)) {
+                return Result.failure(Exception("Invalid key"))
+            }
+
+            val lockedCipher = getAndroidKeyStoreKeyCipher(
+                ROOT_KEY_NAME, Cipher.ENCRYPT_MODE
+            ).getOrElse { return Result.failure(it) }
+
+            val cipher = suspendCancellableCoroutine { continuation ->
+                val canceller = authWithBiometricCrypto(
+                    "Setup biometric vault unlock",
+                    activity,
+                    onSuccess = { continuation.resume(Result.success(it)) },
+                    onError = { continuation.resume(Result.failure(Exception(it))) },
+                    cryptoObject = BiometricPrompt.CryptoObject(lockedCipher),
+                    confirmationRequired = true,
+                )
+                continuation.invokeOnCancellation {
+                    canceller.cancel()
+                }
+            }.getOrElse { return Result.failure(it) }.cipher
+                ?: return Result.failure(Exception("No cipher"))
+
+            val encRootKeyBytes = withContext(Dispatchers.Default) {
+                try {
+                    Result.success(cipher.doFinal(key))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) }
+            val encRootKey =
+                "${base64URLRaw.encode(cipher.iv)}$${base64URLRaw.encode(encRootKeyBytes)}"
+
+            return withContext(Dispatchers.IO) {
+                try {
+                    keyDB.rootKeyDao().setupBiometric(ROOT_KEY_NAME, encRootKey)
+                    _biometricState.update { true }
+                    Result.success(Unit)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }
+        }
+    }
+
+    suspend fun removeBiometric(): Result<Unit> {
+        rootKeyMutex.withLock {
+            rootKeyState.update { null }
+
+            withContext(Dispatchers.IO) {
+                try {
+                    keyDB.rootKeyDao().removeBiometric(ROOT_KEY_NAME)
+                    Result.success(Unit)
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) }
+            _biometricState.update { false }
             deleteAndroidKeyStoreKey(ROOT_KEY_NAME).getOrElse { return Result.failure(it) }
             return Result.success(Unit)
         }
@@ -284,6 +470,8 @@ class KeyStoreService(appContext: Context) {
     @Entity(tableName = "keystore_root_keys", primaryKeys = ["name"])
     data class RootKey(
         @ColumnInfo(name = "name") val name: String,
+        @ColumnInfo(name = "key_hash") val keyHash: String,
+        @ColumnInfo(name = "kdf_params") val kdfParams: String,
         @ColumnInfo(name = "enc_root_key") val encRootKey: String,
     )
 
@@ -297,6 +485,12 @@ class KeyStoreService(appContext: Context) {
 
         @Query("DELETE FROM keystore_root_keys WHERE name = :name")
         suspend fun deleteByName(name: String): Int
+
+        @Query("UPDATE keystore_root_keys SET enc_root_key = :encRootKey WHERE name = :name")
+        suspend fun setupBiometric(name: String, encRootKey: String): Int
+
+        @Query("UPDATE keystore_root_keys SET enc_root_key = '' WHERE name = :name")
+        suspend fun removeBiometric(name: String): Int
     }
 
     @Entity(tableName = "keystore_ssh_keys", primaryKeys = ["name"])

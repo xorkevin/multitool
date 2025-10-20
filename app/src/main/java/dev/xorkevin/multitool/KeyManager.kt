@@ -46,6 +46,7 @@ fun RootKeyManagerInput() {
     val context = LocalContext.current
 
     val unlocked by keyManagerViewModel.unlockState.collectAsStateWithLifecycle()
+    var password by keyManagerViewModel.password.collectAsStateWithLifecycle()
     val unlockResult by keyManagerViewModel.unlockResult.collectAsStateWithLifecycle()
 
     if (unlocked) {
@@ -56,11 +57,37 @@ fun RootKeyManagerInput() {
             Text(text = "Lock")
         }
     } else {
-        Button(
-            onClick = { coroutineScope.launch { keyManagerViewModel.unlock(context) } },
-            modifier = Modifier.padding(16.dp, 8.dp),
-        ) {
-            Text(text = "Unlock")
+        TextField(
+            value = password,
+            onValueChange = { password = it },
+            label = { Text(text = "Password") },
+            visualTransformation = PasswordVisualTransformation(),
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+            trailingIcon = {
+                QRScannerLauncher(
+                    onScan = { password = (it ?: "").trim() },
+                    modifier = Modifier.padding(16.dp, 8.dp),
+                ) {
+                    Icon(imageVector = Icons.Filled.Add, contentDescription = "Scan password")
+                }
+            },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+        )
+        Row(Modifier.fillMaxWidth()) {
+            Button(
+                onClick = { coroutineScope.launch { keyManagerViewModel.biometricUnlock(context) } },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Text(text = "Biometric unlock")
+            }
+            Button(
+                onClick = { coroutineScope.launch { keyManagerViewModel.passwordUnlock() } },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Text(text = "Password unlock")
+            }
         }
         unlockResult.onFailure {
             Text(
@@ -72,21 +99,47 @@ fun RootKeyManagerInput() {
         }
     }
 
-    var rootKeyStr by keyManagerViewModel.rootKeyStr.collectAsStateWithLifecycle()
-    val encryptRootKeyResult by keyManagerViewModel.encryptRootKeyResult.collectAsStateWithLifecycle()
+    val biometricResult by keyManagerViewModel.biometricResult.collectAsStateWithLifecycle()
+    val hasBiometric by keyManagerViewModel.biometricState.collectAsStateWithLifecycle()
+    if (hasBiometric) {
+        Button(
+            onClick = { coroutineScope.launch { keyManagerViewModel.removeBiometric() } },
+            modifier = Modifier.padding(16.dp, 8.dp),
+        ) {
+            Text(text = "Remove biometric")
+        }
+    } else {
+        Button(
+            onClick = { coroutineScope.launch { keyManagerViewModel.setupBiometric(context) } },
+            modifier = Modifier.padding(16.dp, 8.dp),
+        ) {
+            Text(text = "Setup biometric")
+        }
+    }
+    biometricResult.onFailure {
+        Text(
+            text = it.toString(),
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth(),
+        )
+    }
+
+    var rootKeyPassword by keyManagerViewModel.rootKeyPassword.collectAsStateWithLifecycle()
+    val rootKeyResult by keyManagerViewModel.rootKeyResult.collectAsStateWithLifecycle()
 
     TextField(
-        value = rootKeyStr,
-        onValueChange = { rootKeyStr = it },
-        label = { Text(text = "Root Key") },
+        value = rootKeyPassword,
+        onValueChange = { rootKeyPassword = it },
+        label = { Text(text = "Root Key Password") },
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         trailingIcon = {
             QRScannerLauncher(
-                onScan = { rootKeyStr = (it ?: "").trim() },
+                onScan = { rootKeyPassword = (it ?: "").trim() },
                 modifier = Modifier.padding(16.dp, 8.dp),
             ) {
-                Icon(imageVector = Icons.Filled.Add, contentDescription = "Scan root key")
+                Icon(imageVector = Icons.Filled.Add, contentDescription = "Scan root key password")
             }
         },
         modifier = Modifier
@@ -95,38 +148,21 @@ fun RootKeyManagerInput() {
     )
     Row(Modifier.fillMaxWidth()) {
         Button(
-            onClick = { coroutineScope.launch { keyManagerViewModel.unlockWithKey() } },
+            onClick = { coroutineScope.launch { keyManagerViewModel.generateRootKey() } },
             modifier = Modifier.padding(16.dp, 8.dp),
         ) {
-            Text(text = "Unlock with key")
+            Text(text = "Generate root key")
         }
         Button(
-            onClick = { coroutineScope.launch { keyManagerViewModel.encryptRootKey(context) } },
+            onClick = { coroutineScope.launch { keyManagerViewModel.deleteRootKey() } },
             modifier = Modifier.padding(16.dp, 8.dp),
         ) {
-            Text(text = "Encrypt and store root key")
+            Text(text = "Delete root key")
         }
     }
-    encryptRootKeyResult.onFailure {
+    rootKeyResult.onFailure {
         Text(
-            text = "Failed to encrypt and store root key: ${it.toString()}",
-            modifier = Modifier
-                .padding(16.dp, 8.dp)
-                .fillMaxWidth(),
-        )
-    }
-
-    val deleteRootKeyResult by keyManagerViewModel.deleteRootKeyResult.collectAsStateWithLifecycle()
-
-    Button(
-        onClick = { coroutineScope.launch { keyManagerViewModel.deleteRootKey() } },
-        modifier = Modifier.padding(16.dp, 8.dp),
-    ) {
-        Text(text = "Delete root key")
-    }
-    deleteRootKeyResult.onFailure {
-        Text(
-            text = "Failed to delete root key: ${it.toString()}",
+            text = it.toString(),
             modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth(),
@@ -137,6 +173,7 @@ fun RootKeyManagerInput() {
 class KeyManagerViewModel(private val keyStore: KeyStoreService) : ViewModel() {
     val unlockState =
         keyStore.unlockState.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), false)
+    val biometricState = keyStore.biometricState
 
     suspend fun lock() {
         keyStore.lock()
@@ -145,37 +182,52 @@ class KeyManagerViewModel(private val keyStore: KeyStoreService) : ViewModel() {
     private val _unlockResult = MutableViewModelStateFlow(Result.success(Unit))
     val unlockResult = _unlockResult.flow
 
-    suspend fun unlock(activityCtx: Context) {
-        val res = keyStore.unlock(activityCtx)
+    suspend fun biometricUnlock(activityCtx: Context) {
+        val res = keyStore.biometricUnlock(activityCtx)
         _unlockResult.update { res }
     }
 
-    val rootKeyStr = MutableViewModelStateFlow("")
+    val password = MutableViewModelStateFlow("")
 
-    suspend fun unlockWithKey() {
-        val keyBytes = rootKeyStr.value.toByteArray()
-        keyStore.setRootKey(keyBytes)
-        rootKeyStr.update { "" }
-    }
-
-    private val _encryptRootKeyResult = MutableViewModelStateFlow(Result.success(Unit))
-    val encryptRootKeyResult = _encryptRootKeyResult.flow
-
-    suspend fun encryptRootKey(activityCtx: Context) {
-        val keyBytes = rootKeyStr.value.toByteArray()
-        val res = keyStore.encryptRootKey(keyBytes, activityCtx)
-        _encryptRootKeyResult.update { res }
+    suspend fun passwordUnlock() {
+        val keyBytes = password.value.toByteArray()
+        val res = keyStore.passwordUnlock(keyBytes)
+        _unlockResult.update { res }
         res.onSuccess {
-            rootKeyStr.update { "" }
+            password.update { "" }
         }
     }
 
-    private val _deletetRootKeyResult = MutableViewModelStateFlow(Result.success(Unit))
-    val deleteRootKeyResult = _deletetRootKeyResult.flow
+    val rootKeyPassword = MutableViewModelStateFlow("")
+
+    private val _rootKeyResult = MutableViewModelStateFlow(Result.success(Unit))
+    val rootKeyResult = _rootKeyResult.flow
+
+    suspend fun generateRootKey() {
+        val password = rootKeyPassword.value.toByteArray()
+        val res = keyStore.generateRootKey(password)
+        _rootKeyResult.update { res }
+        res.onSuccess {
+            rootKeyPassword.update { "" }
+        }
+    }
 
     suspend fun deleteRootKey() {
         val res = keyStore.deleteRootKey()
-        _deletetRootKeyResult.update { res }
+        _rootKeyResult.update { res }
+    }
+
+    private val _biometricResult = MutableViewModelStateFlow(Result.success(Unit))
+    val biometricResult = _biometricResult.flow
+
+    suspend fun setupBiometric(activityCtx: Context) {
+        val res = keyStore.setupBiometric(activityCtx)
+        _biometricResult.update { res }
+    }
+
+    suspend fun removeBiometric() {
+        val res = keyStore.removeBiometric()
+        _biometricResult.update { res }
     }
 
     companion object : ScopedViewModelFactory<KeyManagerViewModel> {

@@ -2,15 +2,27 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "f3dbdf67b2348129fc175cc64eb7bb92",
+    "identityHash": "64d9bf7c1899c8179bf3b18774bee0bd",
     "entities": [
       {
         "tableName": "keystore_root_keys",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `enc_root_key` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `key_hash` TEXT NOT NULL, `kdf_params` TEXT NOT NULL, `enc_root_key` TEXT NOT NULL, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
             "columnName": "name",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "keyHash",
+            "columnName": "key_hash",
+            "affinity": "TEXT",
+            "notNull": true
+          },
+          {
+            "fieldPath": "kdfParams",
+            "columnName": "kdf_params",
             "affinity": "TEXT",
             "notNull": true
           },
@@ -61,7 +73,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'f3dbdf67b2348129fc175cc64eb7bb92')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '64d9bf7c1899c8179bf3b18774bee0bd')"
     ]
   }
 }

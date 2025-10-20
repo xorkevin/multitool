@@ -3,7 +3,9 @@ package dev.xorkevin.multitool
 import org.bouncycastle.crypto.InvalidCipherTextException
 import org.bouncycastle.crypto.digests.Blake2bDigest
 import org.bouncycastle.crypto.engines.ChaChaEngine
+import org.bouncycastle.crypto.generators.Argon2BytesGenerator
 import org.bouncycastle.crypto.modes.ChaCha20Poly1305
+import org.bouncycastle.crypto.params.Argon2Parameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.util.Pack
@@ -122,6 +124,29 @@ class CryptoUtil {
             digest.update(inp, 0, inp.size)
             val out = ByteArray(length)
             digest.doFinal(out, 0)
+            return Result.success(out)
+        }
+
+        fun argon2id(
+            inp: ByteArray,
+            salt: ByteArray,
+            memKB: Int,
+            iter: Int,
+            par: Int,
+            length: Int,
+        ): Result<ByteArray> {
+            val generator = Argon2BytesGenerator().apply {
+                init(Argon2Parameters.Builder(Argon2Parameters.ARGON2_id).run {
+                    withVersion(Argon2Parameters.ARGON2_VERSION_13)
+                    withSalt(salt)
+                    withMemoryAsKB(memKB)
+                    withIterations(iter)
+                    withParallelism(par)
+                    build()
+                })
+            }
+            val out = ByteArray(length)
+            generator.generateBytes(inp, out)
             return Result.success(out)
         }
     }
