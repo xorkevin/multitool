@@ -437,8 +437,6 @@ class KeyStoreService(appContext: Context) {
 
     suspend fun removeBiometric(): Result<Unit> {
         rootKeyMutex.withLock {
-            rootKeyState.update { null }
-
             withContext(Dispatchers.IO) {
                 try {
                     keyDB.rootKeyDao().removeBiometric(ROOT_KEY_NAME)
