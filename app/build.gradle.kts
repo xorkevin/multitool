@@ -88,6 +88,7 @@ dependencies {
     implementation(libs.org.eclipse.jgit.ssh.apache)
     implementation(libs.androidx.compose.material.icons.core)
     implementation(libs.androidx.room.runtime)
+    implementation(libs.androidx.fragment.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.room.ktx)
     testImplementation(libs.junit)

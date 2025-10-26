@@ -44,6 +44,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -132,7 +133,7 @@ fun QRScannerLauncher(
     val qrScannerViewModel: QRScannerViewModel = scopedViewModel()
     val cameraPermissionState = rememberPermissionState(android.Manifest.permission.CAMERA)
     var scanEnabled by qrScannerViewModel.scanEnabled.collectAsStateWithLifecycle()
-    Button(
+    TextButton(
         onClick = { scanEnabled = true },
         modifier = modifier,
         content = content,
@@ -276,12 +277,11 @@ fun QRScanner(onScan: (value: String?) -> Unit, onDismiss: () -> Unit) {
                 scanResult?.let { scanResult ->
                     sensorToUiTransformMatrix?.let { sensorToUiTransformMatrix ->
                         scanResult.points.forEach {
-                            Box(
-                                modifier = Modifier
-                                    .offset {
-                                        sensorToUiTransformMatrix.map(it).round()
-                                    }
-                                    .offset((-8).dp, (-8).dp)) {
+                            Box(modifier = Modifier
+                                .offset {
+                                    sensorToUiTransformMatrix.map(it).round()
+                                }
+                                .offset((-8).dp, (-8).dp)) {
                                 Spacer(
                                     modifier = Modifier
                                         .border(2.dp, Color.Green, CircleShape)

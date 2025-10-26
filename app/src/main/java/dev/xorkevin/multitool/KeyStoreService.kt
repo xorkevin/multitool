@@ -129,8 +129,30 @@ class KeyStoreService(appContext: Context) {
     private val rootKeyState = MutableStateFlow<ByteArray?>(null)
 
     val unlockState = rootKeyState.mapLatest { it != null }
+    private val _setupState = MutableStateFlow(false)
+    val setupState = _setupState.asStateFlow()
     private val _biometricState = MutableStateFlow(false)
     val biometricState = _biometricState.asStateFlow()
+
+    suspend fun refreshState(): Result<Unit> {
+        rootKeyMutex.withLock {
+            val encKey = withContext(Dispatchers.IO) {
+                try {
+                    Result.success(keyDB.rootKeyDao().getByName(ROOT_KEY_NAME))
+                } catch (e: Exception) {
+                    Result.failure(e)
+                }
+            }.getOrElse { return Result.failure(it) }
+            if (encKey == null) {
+                _setupState.update { false }
+                _biometricState.update { false }
+                return Result.success(Unit)
+            }
+            _setupState.update { true }
+            _biometricState.update { encKey.encRootKey != "" }
+            return Result.success(Unit)
+        }
+    }
 
     private val base64URLRaw = Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT)
 
@@ -219,7 +241,6 @@ class KeyStoreService(appContext: Context) {
             }
 
             rootKeyState.update { key }
-            _biometricState.update { true }
             return Result.success(Unit)
         }
     }
@@ -274,7 +295,6 @@ class KeyStoreService(appContext: Context) {
             }
 
             rootKeyState.update { key }
-            _biometricState.update { encKey.encRootKey != "" }
             return Result.success(Unit)
         }
     }
@@ -328,7 +348,7 @@ class KeyStoreService(appContext: Context) {
             return withContext(Dispatchers.IO) {
                 try {
                     keyDB.rootKeyDao().insertAll(RootKey(ROOT_KEY_NAME, keyHash, paramsStr, ""))
-                    _biometricState.update { false }
+                    _setupState.update { true }
                     Result.success(Unit)
                 } catch (e: Exception) {
                     Result.failure(e)
@@ -349,6 +369,7 @@ class KeyStoreService(appContext: Context) {
                     Result.failure(e)
                 }
             }.getOrElse { return Result.failure(it) }
+            _setupState.update { false }
             _biometricState.update { false }
             deleteAndroidKeyStoreKey(ROOT_KEY_NAME).getOrElse { return Result.failure(it) }
             return Result.success(Unit)
