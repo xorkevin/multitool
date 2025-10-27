@@ -35,7 +35,6 @@ val toolsRoutes = listOf(
     RouteEntry(Route.Tools.PGPEncrypt, "PGP Encrypt"),
     RouteEntry(Route.Tools.PGPDecrypt, "PGP Decrypt"),
     RouteEntry(Route.Tools.QRScanner, "QR Scanner"),
-    RouteEntry(Route.Tools.Git, "Git"),
     RouteEntry(Route.Tools.Biometrics, "Biometrics"),
 )
 
@@ -110,9 +109,6 @@ fun ToolsNavHost(toggleNavDrawer: () -> Unit) {
             }
             composable<Route.Tools.QRScanner> {
                 QRScannerTool()
-            }
-            composable<Route.Tools.Git> {
-                GitTool()
             }
             composable<Route.Tools.Biometrics> {
                 BiometricAuthTool()

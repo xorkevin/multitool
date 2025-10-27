@@ -83,9 +83,6 @@ object Route {
         data object QRScanner
 
         @Serializable
-        data object Git
-
-        @Serializable
         data object Biometrics
     }
 
@@ -107,7 +104,7 @@ object Route {
 data class RouteEntry<T : Any>(val route: T, val name: String)
 
 val topLevelRoutes = listOf(
-    RouteEntry(Route.Tools.Home, "Home"),
+    RouteEntry(Route.Tools.Home, "Tools"),
     RouteEntry(Route.Settings.Home, "Settings"),
 )
 
@@ -137,7 +134,7 @@ fun App() {
             ) {
                 Column(modifier = Modifier.padding(8.dp)) {
                     val currentDestination = currentBackStackEntry?.destination
-                    Text(text = "Tools", modifier = Modifier.padding(16.dp))
+                    Text(text = "Multitool", modifier = Modifier.padding(16.dp))
                     topLevelRoutes.forEach {
                         NavigationDrawerItem(
                             label = { Text(text = it.name) },

@@ -10,5 +10,5 @@ class MainApplication : Application() {
 
 class AppContainer(appContext: Context) {
     val keyStore = KeyStoreService(appContext)
-    val gitRepoService = GitRepoService(appContext)
+    val gitRepoService = GitRepoService(appContext, keyStore)
 }
