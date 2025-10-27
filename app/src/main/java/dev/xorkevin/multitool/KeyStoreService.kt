@@ -527,8 +527,7 @@ class KeyStoreService(appContext: Context) {
                 )
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
-                val res = Result.failure<Unit>(e)
-                return@withContext res
+                return@withContext Result.failure<Unit>(e)
             }
         }
     }

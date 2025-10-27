@@ -340,8 +340,7 @@ class RootKeyManagerViewModel(private val keyStore: KeyStoreService) : ViewModel
     companion object : ScopedViewModelFactory<RootKeyManagerViewModel> {
         override fun create(app: Application): RootKeyManagerViewModel {
             app as MainApplication
-            val keyStore = app.container.keyStore
-            return RootKeyManagerViewModel(keyStore)
+            return RootKeyManagerViewModel(app.container.keyStore)
         }
     }
 }

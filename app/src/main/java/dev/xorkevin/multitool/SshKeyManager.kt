@@ -129,7 +129,6 @@ fun SshKeyManagerList() {
     }
 
     val sshKeys by sshKeyManagerViewModel.sshKeys.collectAsStateWithLifecycle()
-    val deleteRes by sshKeyManagerViewModel.deleteSshKeyRes.collectAsStateWithLifecycle()
     val displayDeleteSshKeyModal by sshKeyManagerViewModel.displayDeleteSshKeyModal.collectAsStateWithLifecycle()
 
     TextButton(
@@ -158,9 +157,7 @@ fun SshKeyManagerList() {
         )
         keys.forEach {
             ListItem(headlineContent = {
-                Text(
-                    text = it.name
-                )
+                Text(text = it.name)
             }, trailingContent = {
                 TextButton(
                     onClick = { sshKeyManagerViewModel.promptDeleteSshKey(it.name) },
@@ -173,6 +170,8 @@ fun SshKeyManagerList() {
     }
     if (displayDeleteSshKeyModal) {
         val candidateSshKeyDeleteName by sshKeyManagerViewModel.candidateSshKeyDeleteName.collectAsStateWithLifecycle()
+        val deleteRes by sshKeyManagerViewModel.deleteSshKeyRes.collectAsStateWithLifecycle()
+
         AlertDialog(title = { Text(text = "Delete ssh key") }, text = {
             Column {
                 Text(text = "This will delete the ssh key \"$candidateSshKeyDeleteName\", making it unavailable for use to pull git repositories.")
@@ -280,8 +279,7 @@ class SshKeyManagerViewModel(private val keyStore: KeyStoreService) : ViewModel(
     companion object : ScopedViewModelFactory<SshKeyManagerViewModel> {
         override fun create(app: Application): SshKeyManagerViewModel {
             app as MainApplication
-            val keyStore = app.container.keyStore
-            return SshKeyManagerViewModel(keyStore)
+            return SshKeyManagerViewModel(app.container.keyStore)
         }
     }
 }

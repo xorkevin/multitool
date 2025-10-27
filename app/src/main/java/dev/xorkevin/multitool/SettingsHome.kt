@@ -31,8 +31,9 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 
 val settingsRoutes = listOf(
-    RouteEntry(Route.Settings.SshKeyManager, "Manage SSH Keys"),
-    RouteEntry(Route.Settings.RootKeyManager, "Manage Root Key"),
+    RouteEntry(Route.Settings.GitRepoManager, "Git Repos"),
+    RouteEntry(Route.Settings.SshKeyManager, "SSH Keys"),
+    RouteEntry(Route.Settings.RootKeyManager, "Root Key"),
 )
 
 @Composable
@@ -94,6 +95,9 @@ fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
         ) {
             composable<Route.Settings.Home> {
                 SettingsHome(navigate)
+            }
+            composable<Route.Settings.GitRepoManager> {
+                GitRepoManager()
             }
             composable<Route.Settings.SshKeyManager> {
                 SshKeyManager()
