@@ -3,7 +3,6 @@ package dev.xorkevin.multitool
 import android.app.Application
 import android.content.Context
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -15,6 +14,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
@@ -35,7 +35,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 @Composable
-fun KeyManager() = ViewModelScope(KeyManagerViewModel::class) {
+fun RootKeyManager() = ViewModelScope(KeyManagerViewModel::class) {
     val keyManagerViewModel: KeyManagerViewModel = scopedViewModel()
 
     LaunchedEffect(Unit) {
@@ -45,20 +45,14 @@ fun KeyManager() = ViewModelScope(KeyManagerViewModel::class) {
     val isSetup by keyManagerViewModel.setupState.collectAsStateWithLifecycle()
 
     if (isSetup) {
-        RootKeyManagerInput()
+        val scrollState = rememberScrollState()
+        Column(modifier = Modifier.verticalScroll(scrollState)) {
+            RootKeyUnlocker()
+            BiometricManager()
+            RootKeyManagerDeleter()
+        }
     } else {
         RootKeyManagerSetup()
-    }
-}
-
-
-@Composable
-fun RootKeyManagerInput() {
-    val scrollState = rememberScrollState()
-    Column(modifier = Modifier.verticalScroll(scrollState)) {
-        RootKeyUnlocker()
-        BiometricManager()
-        RootKeyManagerDeleter()
     }
 }
 
@@ -76,13 +70,29 @@ fun RootKeyUnlocker() {
     val unlockResult by keyManagerViewModel.unlockResult.collectAsStateWithLifecycle()
 
     if (unlocked) {
+        Text(
+            text = "Lock the vault",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
         Button(
             onClick = { coroutineScope.launch { keyManagerViewModel.lock() } },
-            modifier = Modifier.padding(16.dp, 8.dp),
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth(),
         ) {
             Text(text = "Lock")
         }
     } else {
+        Text(
+            text = "Unlock the vault",
+            style = MaterialTheme.typography.titleMedium,
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
         TextField(
             value = password,
             onValueChange = { password = it },
@@ -101,26 +111,28 @@ fun RootKeyUnlocker() {
                 .padding(8.dp)
                 .fillMaxWidth(),
         )
-        Row(Modifier.fillMaxWidth()) {
-            if (hasBiometric) {
-                TextButton(
-                    onClick = {
-                        coroutineScope.launch {
-                            keyManagerViewModel.biometricUnlock(
-                                context
-                            )
-                        }
-                    },
-                    modifier = Modifier.padding(16.dp, 8.dp),
-                ) {
-                    Text(text = "Biometric unlock")
-                }
-            }
+        Button(
+            onClick = { coroutineScope.launch { keyManagerViewModel.passwordUnlock() } },
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth(),
+        ) {
+            Text(text = "Unlock")
+        }
+        if (hasBiometric) {
             TextButton(
-                onClick = { coroutineScope.launch { keyManagerViewModel.passwordUnlock() } },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                onClick = {
+                    coroutineScope.launch {
+                        keyManagerViewModel.biometricUnlock(
+                            context
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth(),
             ) {
-                Text(text = "Password unlock")
+                Text(text = "Biometric unlock")
             }
         }
         unlockResult.onFailure {
@@ -145,6 +157,14 @@ fun BiometricManager() {
     val displayRemoveBiometricModal by keyManagerViewModel.displayRemoveBiometricModal.collectAsStateWithLifecycle()
     val biometricResult by keyManagerViewModel.biometricResult.collectAsStateWithLifecycle()
     val hasBiometric by keyManagerViewModel.biometricState.collectAsStateWithLifecycle()
+
+    Text(
+        text = "Manage biometric auth",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier
+            .padding(16.dp, 8.dp)
+            .fillMaxWidth()
+    )
     if (hasBiometric) {
         TextButton(
             onClick = { coroutineScope.launch { keyManagerViewModel.showRemoveBiometric() } },
@@ -197,6 +217,13 @@ fun RootKeyManagerDeleter() {
     val displayDeleteRootKeyModal by keyManagerViewModel.displayDeleteRootKeyModal.collectAsStateWithLifecycle()
     val rootKeyResult by keyManagerViewModel.rootKeyResult.collectAsStateWithLifecycle()
 
+    Text(
+        text = "Danger zone",
+        style = MaterialTheme.typography.titleMedium,
+        modifier = Modifier
+            .padding(16.dp, 8.dp)
+            .fillMaxWidth()
+    )
     TextButton(
         onClick = { keyManagerViewModel.showDeleteRootKeyModal() },
         modifier = Modifier.padding(16.dp, 8.dp),
