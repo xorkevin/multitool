@@ -27,6 +27,11 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import org.apache.sshd.common.config.keys.FilePasswordProvider
+import org.apache.sshd.common.util.security.SecurityUtils
+import java.io.IOException
+import java.security.GeneralSecurityException
+import java.security.KeyPair
 import java.security.KeyStore
 import java.security.MessageDigest
 import java.security.SecureRandom
@@ -331,15 +336,15 @@ class KeyStoreService(appContext: Context) {
             }
 
             val salt = ByteArray(32)
-            SecureRandom.getInstanceStrong().nextBytes(salt)
+            val key = withContext(Dispatchers.Default) {
+                SecureRandom.getInstanceStrong().nextBytes(salt)
+                CryptoUtil.argon2id(password, salt, 19456, 2, 1, 32)
+            }.getOrElse { return Result.failure(it) }
             val paramsStr = Json.encodeToString(
                 KDFParams(
                     "argon2id19", base64URLRaw.encode(salt), 19456, 2, 1, 32
                 )
             )
-            val key = withContext(Dispatchers.Default) {
-                CryptoUtil.argon2id(password, salt, 19456, 2, 1, 32)
-            }.getOrElse { return Result.failure(it) }
 
             val keyHash = base64URLRaw.encode(withContext(Dispatchers.Default) {
                 CryptoUtil.blake2b(key, 32)
@@ -472,8 +477,94 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    fun getSshKeyDao(): SshKeyDao {
-        return keyDB.sshKeyDao()
+    suspend fun getAllSshKeys(): Result<List<SshKeyNameTuple>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val res = keyDB.sshKeyDao().getAll()
+                Result.success(res)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun deleteSshKey(name: String): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                keyDB.sshKeyDao().deleteByName(name)
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun storeSshKey(name: String, keyStr: String, passphrase: String): Result<Unit> {
+        val rootKey = rootKeyState.value
+        if (rootKey == null) {
+            return Result.failure(Exception("Vault is locked"))
+        }
+
+        withContext(Dispatchers.Default) {
+            loadSSHPrivateKey(keyStr, passphrase)
+        }.getOrElse { return Result.failure(it) }
+
+        val encKey = base64URLRaw.encode(withContext(Dispatchers.Default) {
+            val nonce = ByteArray(CryptoUtil.XCHACHA20_POLY1305_NONCE_SIZE)
+            SecureRandom.getInstanceStrong().nextBytes(nonce)
+            CryptoUtil.encryptXChaCha20Poly1305(rootKey, nonce, keyStr.toByteArray())
+        }.getOrElse { return Result.failure(it) })
+        val encPassphrase = base64URLRaw.encode(withContext(Dispatchers.Default) {
+            val nonce = ByteArray(CryptoUtil.XCHACHA20_POLY1305_NONCE_SIZE)
+            SecureRandom.getInstanceStrong().nextBytes(nonce)
+            CryptoUtil.encryptXChaCha20Poly1305(rootKey, nonce, passphrase.toByteArray())
+        }.getOrElse { return Result.failure(it) })
+
+        return withContext(Dispatchers.IO) {
+            try {
+                keyDB.sshKeyDao().insertAll(
+                    SshKey(name = name, encKeyStr = encKey, encPassphrase = encPassphrase)
+                )
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                val res = Result.failure<Unit>(e)
+                return@withContext res
+            }
+        }
+    }
+
+    suspend fun getSshKey(name: String): Result<KeyPair> {
+        val rootKey = rootKeyState.value
+        if (rootKey == null) {
+            return Result.failure(Exception("Vault is locked"))
+        }
+        val key = withContext(Dispatchers.IO) {
+            try {
+                return@withContext Result.success(keyDB.sshKeyDao().getByName(name))
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }.getOrElse { return Result.failure(it) }
+        if (key == null) {
+            return Result.failure(Exception("No key"))
+        }
+        val encKeyBytes = try {
+            base64URLRaw.decode(key.encKeyStr)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        val encPassphraseBytes = try {
+            base64URLRaw.decode(key.encPassphrase)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        return withContext(Dispatchers.Default) {
+            val keyStr = CryptoUtil.decryptXChaCha20Poly1305(rootKey, encKeyBytes)
+                .getOrElse { return@withContext Result.failure(it) }.decodeToString()
+            val passphrase = CryptoUtil.decryptXChaCha20Poly1305(rootKey, encPassphraseBytes)
+                .getOrElse { return@withContext Result.failure(it) }.decodeToString()
+            loadSSHPrivateKey(keyStr, passphrase)
+        }
     }
 
     private val keyDB = Room.databaseBuilder(
@@ -520,7 +611,7 @@ class KeyStoreService(appContext: Context) {
     )
 
     data class SshKeyNameTuple(
-        @ColumnInfo(name = "name") val name: String?,
+        @ColumnInfo(name = "name") val name: String,
     )
 
     @Dao
@@ -528,7 +619,7 @@ class KeyStoreService(appContext: Context) {
         @Query("SELECT * FROM keystore_ssh_keys WHERE name = :name")
         suspend fun getByName(name: String): SshKey?
 
-        @Query("SELECT name FROM keystore_ssh_keys")
+        @Query("SELECT name FROM keystore_ssh_keys ORDER BY name")
         suspend fun getAll(): List<SshKeyNameTuple>
 
         @Insert
@@ -537,4 +628,31 @@ class KeyStoreService(appContext: Context) {
         @Query("DELETE FROM keystore_ssh_keys WHERE name = :name")
         suspend fun deleteByName(name: String): Int
     }
+}
+
+internal fun loadSSHPrivateKey(secretKey: String, passphrase: String): Result<KeyPair> {
+    val keypairs = try {
+        SecurityUtils.loadKeyPairIdentities(
+            null,
+            null,
+            secretKey.byteInputStream(),
+            FilePasswordProvider.of(passphrase),
+        )
+    } catch (e: IOException) {
+        return Result.failure(e)
+    } catch (e: GeneralSecurityException) {
+        return Result.failure(e)
+    }
+    if (keypairs == null) {
+        return Result.failure(Exception("No keys"))
+    }
+    val iter = keypairs.iterator()
+    if (!iter.hasNext()) {
+        return Result.failure(Exception("No keys"))
+    }
+    val keypair = iter.next()
+    if (keypair == null) {
+        return Result.failure(Exception("No keys"))
+    }
+    return Result.success(keypair)
 }
