@@ -38,16 +38,22 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
 
 @Composable
-fun GitRepoManager() = ViewModelScope(GitRepoManagerViewModel::class) {
-    val scrollState = rememberScrollState()
-    Column(modifier = Modifier.verticalScroll(scrollState)) {
-        GitRepoManagerInput()
-        GitRepoManagerList()
+fun GitRepoManager(showSnackbar: suspend (msg: String) -> Unit) =
+    ViewModelScope(GitRepoManagerViewModel::class) {
+        val scrollState = rememberScrollState()
+        Column(modifier = Modifier.verticalScroll(scrollState)) {
+            VaultUnlocker {
+                GitRepoManagerInput()
+                GitRepoManagerList(showSnackbar)
+            }
+        }
     }
-}
 
 @Composable
 fun GitRepoManagerInput() {
@@ -59,6 +65,7 @@ fun GitRepoManagerInput() {
 
     var name by gitRepoManagerViewModel.gitRepoName.collectAsStateWithLifecycle()
     var url by gitRepoManagerViewModel.gitRepoUrl.collectAsStateWithLifecycle()
+    var branch by gitRepoManagerViewModel.gitRepoBranch.collectAsStateWithLifecycle()
     var sshKeyName by gitRepoManagerViewModel.gitRepoSshKeyName.collectAsStateWithLifecycle()
     val addRes by gitRepoManagerViewModel.addGitRepoRes.collectAsStateWithLifecycle()
 
@@ -97,6 +104,24 @@ fun GitRepoManagerInput() {
             .padding(8.dp)
             .fillMaxWidth(),
     )
+    TextField(
+        value = branch,
+        onValueChange = { branch = it },
+        label = { Text(text = "Branch") },
+        trailingIcon = {
+            QRScannerLauncher(
+                onScan = { branch = (it ?: "").trim() },
+                modifier = Modifier.padding(16.dp, 8.dp),
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Add, contentDescription = "Scan branch"
+                )
+            }
+        },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth(),
+    )
     DropdownFormField(
         options = sshKeys.getOrDefault(listOf()).map { it.name },
         value = sshKeyName,
@@ -125,15 +150,23 @@ fun GitRepoManagerInput() {
 }
 
 @Composable
-fun GitRepoManagerList() {
+fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
     val gitRepoManagerViewModel: GitRepoManagerViewModel = scopedViewModel()
 
     LaunchedEffect(Unit) {
         gitRepoManagerViewModel.refreshGitRepos()
     }
 
+    LaunchedEffect(Unit) {
+        gitRepoManagerViewModel.snackEvents.collectLatest {
+            showSnackbar(it)
+        }
+    }
+
     val gitRepos by gitRepoManagerViewModel.gitRepos.collectAsStateWithLifecycle()
+    val cloneGitRepoRes by gitRepoManagerViewModel.cloneGitRepoRes.collectAsStateWithLifecycle()
     val displayDeleteGitRepoModal by gitRepoManagerViewModel.displayDeleteGitRepoModal.collectAsStateWithLifecycle()
+    val displayDeleteGitRepoDirModal by gitRepoManagerViewModel.displayDeleteGitRepoDirModal.collectAsStateWithLifecycle()
 
     TextButton(
         onClick = { gitRepoManagerViewModel.refreshGitRepos() },
@@ -146,6 +179,14 @@ fun GitRepoManagerList() {
     gitRepos.onFailure {
         Text(
             text = "Failed to get repos: ${it.toString()}",
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
+    }
+    cloneGitRepoRes.onFailure {
+        Text(
+            text = "Failed to clone git repo: ${it.toString()}",
             modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
@@ -165,6 +206,7 @@ fun GitRepoManagerList() {
             }, supportingContent = {
                 Column {
                     Text(text = "URL: ${it.url}")
+                    Text(text = "Branch: ${it.branch}")
                     Text(text = "SSH key: ${it.sshKeyName}")
                 }
             }, trailingContent = {
@@ -201,6 +243,40 @@ fun GitRepoManagerList() {
             }
         })
     }
+    if (displayDeleteGitRepoDirModal) {
+        val candidateGitRepoDirDeleteName by gitRepoManagerViewModel.candidateGitRepoDirDeleteName.collectAsStateWithLifecycle()
+        val deleteDirRes by gitRepoManagerViewModel.deleteGitRepoDirRes.collectAsStateWithLifecycle()
+
+        AlertDialog(
+            title = { Text(text = "Delete git repo dir") },
+            text = {
+                Column {
+                    Text(text = "This will delete the git repo dir \"$candidateGitRepoDirDeleteName\", but not its configuration.")
+                    deleteDirRes.onFailure {
+                        Text(
+                            text = "Failed to delete git repo dir: ${it.toString()}",
+                            modifier = Modifier
+                                .padding(16.dp, 8.dp)
+                                .fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            onDismissRequest = { gitRepoManagerViewModel.dismissDeleteGitRepoDir() },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        gitRepoManagerViewModel.deleteGitRepoDir(candidateGitRepoDirDeleteName)
+                    }) {
+                    Text("Confirm")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { gitRepoManagerViewModel.dismissDeleteGitRepoDir() }) {
+                    Text("Cancel")
+                }
+            })
+    }
 }
 
 @Composable
@@ -215,7 +291,16 @@ fun GitRepoManagerDropdownMenu(name: String) {
             Icon(Icons.Filled.MoreVert, contentDescription = "Git repo options")
         }
         DropdownMenu(
-            expanded = expanded, onDismissRequest = { expanded = false }) {
+            expanded = expanded, onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(text = { Text("Clone") }, onClick = {
+                expanded = false
+                gitRepoManagerViewModel.cloneGitRepo(name)
+            })
+            DropdownMenuItem(text = { Text("Delete dir") }, onClick = {
+                expanded = false
+                gitRepoManagerViewModel.promptDeleteGitRepoDir(name)
+            })
             DropdownMenuItem(text = { Text("Delete") }, onClick = {
                 expanded = false
                 gitRepoManagerViewModel.promptDeleteGitRepo(name)
@@ -271,7 +356,6 @@ class GitRepoManagerViewModel(
         MutableViewModelStateFlow(Result.success(listOf<KeyStoreService.SshKeyNameTuple>()))
     val sshKeys = _sshKeys.flow
 
-
     fun refreshGitRepos() {
         viewModelScope.launch {
             run {
@@ -284,6 +368,9 @@ class GitRepoManagerViewModel(
             }
         }
     }
+
+    private val _snackEvents = MutableSharedFlow<String>()
+    val snackEvents = _snackEvents.asSharedFlow()
 
     private val _candidateGitRepoDeleteName = MutableViewModelStateFlow("")
     val candidateGitRepoDeleteName = _candidateGitRepoDeleteName.flow
@@ -314,8 +401,52 @@ class GitRepoManagerViewModel(
         }
     }
 
+    private val _candidateGitRepoDirDeleteName = MutableViewModelStateFlow("")
+    val candidateGitRepoDirDeleteName = _candidateGitRepoDirDeleteName.flow
+    private val _displayDeleteGitRepoDirModal = MutableViewModelStateFlow(false)
+    val displayDeleteGitRepoDirModal = _displayDeleteGitRepoDirModal.flow
+
+    fun promptDeleteGitRepoDir(name: String) {
+        _candidateGitRepoDirDeleteName.update { name }
+        _displayDeleteGitRepoDirModal.update { true }
+    }
+
+    fun dismissDeleteGitRepoDir() {
+        _displayDeleteGitRepoDirModal.update { false }
+        _deleteGitRepoDirRes.update { Result.success(Unit) }
+        _candidateGitRepoDirDeleteName.update { "" }
+    }
+
+    private val _deleteGitRepoDirRes = MutableViewModelStateFlow(Result.success(Unit))
+    val deleteGitRepoDirRes = _deleteGitRepoDirRes.flow
+
+    fun deleteGitRepoDir(name: String) {
+        viewModelScope.launch {
+            val res = gitRepoService.rmRepoDir(name)
+            _deleteGitRepoRes.update { res }
+            res.onSuccess {
+                dismissDeleteGitRepoDir()
+                _snackEvents.emit("Deleted repo dir $name")
+            }
+        }
+    }
+
+    private val _cloneGitRepoRes = MutableViewModelStateFlow(Result.success(Unit))
+    val cloneGitRepoRes = _cloneGitRepoRes.flow
+
+    fun cloneGitRepo(name: String) {
+        viewModelScope.launch {
+            val res = gitRepoService.cloneRepo(name)
+            _cloneGitRepoRes.update { res }
+            res.onSuccess {
+                _snackEvents.emit("Cloned repo $name")
+            }
+        }
+    }
+
     val gitRepoName = MutableViewModelStateFlow("")
     val gitRepoUrl = MutableViewModelStateFlow("")
+    val gitRepoBranch = MutableViewModelStateFlow("")
     val gitRepoSshKeyName = MutableViewModelStateFlow("")
 
     private val _addGitRepoRes = MutableViewModelStateFlow(Result.success(Unit))
@@ -325,6 +456,7 @@ class GitRepoManagerViewModel(
         viewModelScope.launch {
             val name = gitRepoName.value.trim()
             val url = gitRepoUrl.value.trim()
+            val branch = gitRepoBranch.value.trim()
             val sshKeyName = gitRepoSshKeyName.value.trim()
             if (name.isEmpty()) {
                 _addGitRepoRes.update { Result.failure(Exception("Name may not be empty")) }
@@ -332,6 +464,10 @@ class GitRepoManagerViewModel(
             }
             if (url.isEmpty()) {
                 _addGitRepoRes.update { Result.failure(Exception("Url may not be empty")) }
+                return@launch
+            }
+            if (branch.isEmpty()) {
+                _addGitRepoRes.update { Result.failure(Exception("Branch may not be empty")) }
                 return@launch
             }
             if (sshKeyName.isEmpty()) {
@@ -343,6 +479,7 @@ class GitRepoManagerViewModel(
                 GitRepoService.GitRepo(
                     name = name,
                     url = url,
+                    branch = branch,
                     sshKeyName = sshKeyName,
                 )
             )
@@ -350,6 +487,7 @@ class GitRepoManagerViewModel(
             res.onSuccess {
                 gitRepoName.update { "" }
                 gitRepoUrl.update { "" }
+                gitRepoBranch.update { "" }
                 gitRepoSshKeyName.update { "" }
                 refreshGitRepos()
             }

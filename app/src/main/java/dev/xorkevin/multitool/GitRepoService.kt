@@ -11,7 +11,12 @@ import androidx.room.Room
 import androidx.room.RoomDatabase
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import org.apache.sshd.common.util.io.PathUtils.setUserHomeFolderResolver
+import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.TransportConfigCallback
 import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.SshTransport
+import org.eclipse.jgit.transport.Transport
 import org.eclipse.jgit.transport.sshd.ServerKeyDatabase
 import org.eclipse.jgit.transport.sshd.SshdSessionFactory
 import java.io.File
@@ -19,11 +24,23 @@ import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.security.KeyPair
 import java.security.PublicKey
+import java.util.function.Supplier
 
 class GitRepoService(appContext: Context, private val keyStore: KeyStoreService) {
-    private val rootDir = appContext.getDir("ssh_key_manager", Context.MODE_PRIVATE)
+    private val rootDir = appContext.getDir("git_repo_service", Context.MODE_PRIVATE)
+    private val reposDir = File(rootDir, "repos")
     private val sshHomeDir = File(rootDir, "ssh/home")
     private val sshDir = File(sshHomeDir, "ssh")
+
+    init {
+        setUserHomeFolderResolver(DirResolver(sshHomeDir))
+    }
+
+    private class DirResolver(private val dir: File) : Supplier<Path> {
+        override fun get(): Path {
+            return dir.toPath()
+        }
+    }
 
     private suspend fun getSshSessionFactory(name: String): Result<MemSshdSessionFactory> {
         return keyStore.getSshKey(name).map {
@@ -33,8 +50,12 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
 
     private class MemSshdSessionFactory(
         key: KeyPair, private val homeDir: File, private val sshDir: File
-    ) : SshdSessionFactory() {
+    ) : SshdSessionFactory(), TransportConfigCallback {
         private val memKeyProvider = MemKeyProvider(key)
+
+        override fun getDefaultPreferredAuthentications(): String {
+            return "publickey"
+        }
 
         override fun getHomeDirectory(): File {
             return homeDir
@@ -62,6 +83,13 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
 
         override fun getDefaultKnownHostsFiles(sshDir: File?): List<Path> {
             return listOf()
+        }
+
+        override fun configure(transport: Transport?) {
+            if (transport !is SshTransport) {
+                return
+            }
+            transport.sshSessionFactory = this
         }
     }
 
@@ -127,10 +155,60 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
     }
 
     suspend fun rmRepo(name: String): Result<Unit> {
+        rmRepoDir(name).getOrElse { return Result.failure(it) }
         return withContext(Dispatchers.IO) {
             try {
                 gitRepoDB.gitRepoDao().deleteByName(name)
                 return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun rmRepoDir(name: String): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val gitRepoDir = File(reposDir, name)
+                if (!gitRepoDir.exists()) {
+                    return@withContext Result.success(Unit)
+                }
+                gitRepoDir.delete()
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun cloneRepo(name: String): Result<Unit> {
+        val repo = getRepo(name).getOrElse { return Result.failure(it) }
+        val sshSessionFactory =
+            getSshSessionFactory(repo.sshKeyName).getOrElse { return Result.failure(it) }
+        return withContext(Dispatchers.IO) {
+            try {
+                val gitRepoDir = File(reposDir, name)
+                if (gitRepoDir.exists()) {
+                    return@withContext Result.success(Unit)
+                }
+                Git.cloneRepository().setURI(repo.url).setBranch(repo.branch)
+                    .setDirectory(gitRepoDir).setTransportConfigCallback(sshSessionFactory).call()
+                    .use { }
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun listRepoContents(name: String): Result<List<String>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val gitRepoDir = File(reposDir, name)
+                if (!gitRepoDir.exists() or !gitRepoDir.isDirectory) {
+                    return@withContext Result.failure(Exception("Repo not cloned"))
+                }
+                return@withContext Result.success(gitRepoDir.list()?.asList() ?: listOf())
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
             }
@@ -150,6 +228,7 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
     data class GitRepo(
         @ColumnInfo(name = "name") val name: String,
         @ColumnInfo(name = "url") val url: String,
+        @ColumnInfo(name = "branch") val branch: String,
         @ColumnInfo(name = "ssh_key_name") val sshKeyName: String,
     )
 

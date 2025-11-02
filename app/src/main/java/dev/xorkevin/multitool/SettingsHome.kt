@@ -16,6 +16,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -40,6 +42,7 @@ val settingsRoutes = listOf(
 fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
+    val snackbarHostState = remember { SnackbarHostState() }
 
     val navigate: (route: Any) -> Unit = remember(navController) {
         { route ->
@@ -50,6 +53,12 @@ fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
                 restoreState = true
                 launchSingleTop = true
             }
+        }
+    }
+
+    val showSnackbar: suspend (msg: String) -> Unit = remember(snackbarHostState) {
+        { msg ->
+            snackbarHostState.showSnackbar(msg)
         }
     }
 
@@ -85,6 +94,7 @@ fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
                 scrollBehavior = TopAppBarDefaults.pinnedScrollBehavior(rememberTopAppBarState()),
             )
         },
+        snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
     ) { innerPadding ->
         NavHost(
             navController = navController,
@@ -97,7 +107,7 @@ fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
                 SettingsHome(navigate)
             }
             composable<Route.Settings.GitRepoManager> {
-                GitRepoManager()
+                GitRepoManager(showSnackbar)
             }
             composable<Route.Settings.SshKeyManager> {
                 SshKeyManager()

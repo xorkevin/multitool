@@ -35,8 +35,8 @@ fun SshKeyManager() = ViewModelScope(SshKeyManagerViewModel::class) {
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         VaultUnlocker {
             SshKeyManagerInput()
+            SshKeyManagerList()
         }
-        SshKeyManagerList()
     }
 }
 
