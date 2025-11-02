@@ -417,16 +417,24 @@ class PassManagerViewModel(
     data class RepoEntryContents(val rawData: String, val password: String, val otpUri: String)
 
     private val _repoEntry = MutableViewModelStateFlow(RepoEntry("", ""))
-    val repoEntry = _repoEntry.flow.mapLatest {
-        if (it.name == "") {
-            Result.success(RepoEntryContents(rawData = "", password = "", otpUri = ""))
-        } else {
-            Result.success(
-                RepoEntryContents(
-                    rawData = "hello\nworld\n", password = "sample password", otpUri = ""
-                )
+    val repoEntry = _repoEntry.flow.mapLatest { entry ->
+        if (entry.name == "") {
+            return@mapLatest Result.success(
+                RepoEntryContents(rawData = "", password = "", otpUri = "")
             )
         }
+        val repo =
+            gitRepoService.getRepo(entry.name).getOrElse { return@mapLatest Result.failure(it) }
+        val encData = gitRepoService.getRepoEntryContent(entry.name, entry.path)
+            .getOrElse { return@mapLatest Result.failure(it) }
+        val data = keyStore.gpgDecrypt(repo.gpgKeyName, encData)
+            .getOrElse { return@mapLatest Result.failure(it) }
+        val strData = data.decodeToString()
+        return@mapLatest Result.success(
+            RepoEntryContents(
+                rawData = strData, password = strData.lines().firstOrNull() ?: "", otpUri = ""
+            )
+        )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),

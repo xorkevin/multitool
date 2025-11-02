@@ -176,6 +176,7 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
 
     val gitRepos by gitRepoManagerViewModel.gitRepos.collectAsStateWithLifecycle()
     val cloneGitRepoRes by gitRepoManagerViewModel.cloneGitRepoRes.collectAsStateWithLifecycle()
+    val pullGitRepoRes by gitRepoManagerViewModel.pullGitRepoRes.collectAsStateWithLifecycle()
     val displayDeleteGitRepoModal by gitRepoManagerViewModel.displayDeleteGitRepoModal.collectAsStateWithLifecycle()
     val displayDeleteGitRepoDirModal by gitRepoManagerViewModel.displayDeleteGitRepoDirModal.collectAsStateWithLifecycle()
 
@@ -198,6 +199,14 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
     cloneGitRepoRes.onFailure {
         Text(
             text = "Failed to clone git repo: ${it.toString()}",
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
+    }
+    pullGitRepoRes.onFailure {
+        Text(
+            text = "Failed to pull git repo: ${it.toString()}",
             modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
@@ -306,6 +315,10 @@ fun GitRepoManagerDropdownMenu(name: String) {
         DropdownMenu(
             expanded = expanded, onDismissRequest = { expanded = false },
         ) {
+            DropdownMenuItem(text = { Text("Pull") }, onClick = {
+                expanded = false
+                gitRepoManagerViewModel.pullGitRepo(name)
+            })
             DropdownMenuItem(text = { Text("Clone") }, onClick = {
                 expanded = false
                 gitRepoManagerViewModel.cloneGitRepo(name)
@@ -460,6 +473,19 @@ class GitRepoManagerViewModel(
             _cloneGitRepoRes.update { res }
             res.onSuccess {
                 _snackEvents.emit("Cloned repo $name")
+            }
+        }
+    }
+
+    private val _pullGitRepoRes = MutableViewModelStateFlow(Result.success(Unit))
+    val pullGitRepoRes = _pullGitRepoRes.flow
+
+    fun pullGitRepo(name: String) {
+        viewModelScope.launch {
+            val res = gitRepoService.pullRepo(name)
+            _cloneGitRepoRes.update { res }
+            res.onSuccess {
+                _snackEvents.emit("Pulled repo $name")
             }
         }
     }

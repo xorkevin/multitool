@@ -30,14 +30,20 @@ import kotlinx.serialization.json.Json
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.util.security.SecurityUtils
 import org.bouncycastle.bcpg.KeyIdentifier
+import org.bouncycastle.openpgp.PGPEncryptedDataList
 import org.bouncycastle.openpgp.PGPException
+import org.bouncycastle.openpgp.PGPLiteralData
 import org.bouncycastle.openpgp.PGPPrivateKey
+import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData
 import org.bouncycastle.openpgp.PGPSecretKey
 import org.bouncycastle.openpgp.PGPUtil
+import org.bouncycastle.openpgp.bc.BcPGPObjectFactory
 import org.bouncycastle.openpgp.bc.BcPGPSecretKeyRingCollection
 import org.bouncycastle.openpgp.operator.bc.BcPBESecretKeyDecryptorBuilder
 import org.bouncycastle.openpgp.operator.bc.BcPGPDigestCalculatorProvider
+import org.bouncycastle.openpgp.operator.bc.BcPublicKeyDataDecryptorFactory
 import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyPair
@@ -644,7 +650,9 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
-    suspend fun getGPGKey(name: String, keyIdentifier: KeyIdentifier): Result<PGPPrivateKey> {
+    private suspend fun getGPGKey(
+        name: String, keyIdentifier: KeyIdentifier
+    ): Result<PGPPrivateKey> {
         val rootKey = rootKeyState.value
         if (rootKey == null) {
             return Result.failure(Exception("Vault is locked"))
@@ -680,6 +688,17 @@ class KeyStoreService(appContext: Context) {
                 keyringCollection, keyIdentifier
             ).getOrElse { return@withContext Result.failure(it) }
             decryptGPGSecretKey(secretKey, passphrase)
+        }
+    }
+
+    suspend fun gpgDecrypt(name: String, ciphertext: ByteArray): Result<ByteArray> {
+        return withContext(Dispatchers.Default) {
+            val encData =
+                getGPGEncryptedData(ciphertext).getOrElse { return@withContext Result.failure(it) }
+            val key = getGPGKey(
+                name, encData.keyIdentifier
+            ).getOrElse { return@withContext Result.failure(it) }
+            gpgDecryptData(key, encData)
         }
     }
 
@@ -839,5 +858,52 @@ internal fun findSecretKey(
         Result.failure(Exception("Key does not match"))
     } else {
         Result.success(secretKey)
+    }
+}
+
+internal fun getGPGEncryptedData(ciphertext: ByteArray): Result<PGPPublicKeyEncryptedData> {
+    val pgpObjFactory = try {
+        BcPGPObjectFactory(PGPUtil.getDecoderStream(ByteArrayInputStream(ciphertext)))
+    } catch (e: IOException) {
+        return Result.failure(e)
+    }
+    return pgpObjFactory.firstNotNullOfOrNull { pgpObj ->
+        if (pgpObj is PGPEncryptedDataList) {
+            pgpObj.firstNotNullOfOrNull { encData ->
+                if (encData is PGPPublicKeyEncryptedData) {
+                    Result.success(encData)
+                } else {
+                    null
+                }
+            }
+        } else {
+            null
+        }
+    } ?: Result.failure(Exception("Ciphertext contains no encrypted data"))
+}
+
+internal fun gpgDecryptData(
+    key: PGPPrivateKey, encData: PGPPublicKeyEncryptedData
+): Result<ByteArray> {
+    try {
+        val dataStream = BcPGPObjectFactory(
+            encData.getDataStream(BcPublicKeyDataDecryptorFactory(key)),
+        )
+        for (data in dataStream) {
+            if (data !is PGPLiteralData) {
+                return Result.failure(Exception("Unknown encrypted data packet"))
+            }
+            val out = ByteArrayOutputStream()
+            out.write(data.inputStream.readBytes())
+            if (!encData.isIntegrityProtected || !encData.verify()) {
+                return Result.failure(Exception("Message failed integrity check"))
+            }
+            return Result.success(out.toByteArray())
+        }
+        return Result.failure(Exception("No encrypted data"))
+    } catch (e: PGPException) {
+        return Result.failure(e)
+    } catch (e: IOException) {
+        return Result.failure(e)
     }
 }

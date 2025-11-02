@@ -202,6 +202,26 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         }
     }
 
+    suspend fun pullRepo(name: String): Result<Unit> {
+        val repo = getRepo(name).getOrElse { return Result.failure(it) }
+        val sshSessionFactory =
+            getSshSessionFactory(repo.sshKeyName).getOrElse { return Result.failure(it) }
+        return withContext(Dispatchers.IO) {
+            try {
+                val gitRepoDir = File(reposDir, name)
+                if (!gitRepoDir.exists() or !gitRepoDir.isDirectory) {
+                    return@withContext Result.failure(Exception("Git repo not cloned"))
+                }
+                Git.open(gitRepoDir).use { git ->
+                    git.pull().setTransportConfigCallback(sshSessionFactory).call()
+                }
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
     data class RepoFile(val path: String, val isDir: Boolean)
 
     private val ignoredFileNames = setOf(".git", ".gitattributes", ".gpg-id", ".gpg-id.sig")
@@ -225,6 +245,20 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                         listOf(RepoFile(Paths.get(dir, it.name).toString(), it.isDirectory))
                     }
                 }?.toList() ?: listOf())
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun getRepoEntryContent(name: String, path: String): Result<ByteArray> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val entry = File(File(reposDir, name), path)
+                if (!entry.exists() or entry.isDirectory) {
+                    return@withContext Result.failure(Exception("Entry not found"))
+                }
+                return@withContext Result.success(entry.readBytes())
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
             }
