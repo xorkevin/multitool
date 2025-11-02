@@ -2,11 +2,11 @@
   "formatVersion": 1,
   "database": {
     "version": 1,
-    "identityHash": "fec8da68f84c3cd5203a47c00656b016",
+    "identityHash": "2c4d0b498c9ba059a4b67c82ef3e72ec",
     "entities": [
       {
         "tableName": "git_repos",
-        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `url` TEXT NOT NULL, `branch` TEXT NOT NULL, `ssh_key_name` TEXT NOT NULL, PRIMARY KEY(`name`))",
+        "createSql": "CREATE TABLE IF NOT EXISTS `${TABLE_NAME}` (`name` TEXT NOT NULL, `url` TEXT NOT NULL, `branch` TEXT NOT NULL, `ssh_key_name` TEXT NOT NULL, `gpg_key_name` TEXT NOT NULL, PRIMARY KEY(`name`))",
         "fields": [
           {
             "fieldPath": "name",
@@ -31,6 +31,12 @@
             "columnName": "ssh_key_name",
             "affinity": "TEXT",
             "notNull": true
+          },
+          {
+            "fieldPath": "gpgKeyName",
+            "columnName": "gpg_key_name",
+            "affinity": "TEXT",
+            "notNull": true
           }
         ],
         "primaryKey": {
@@ -43,7 +49,7 @@
     ],
     "setupQueries": [
       "CREATE TABLE IF NOT EXISTS room_master_table (id INTEGER PRIMARY KEY,identity_hash TEXT)",
-      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, 'fec8da68f84c3cd5203a47c00656b016')"
+      "INSERT OR REPLACE INTO room_master_table (id,identity_hash) VALUES(42, '2c4d0b498c9ba059a4b67c82ef3e72ec')"
     ]
   }
 }

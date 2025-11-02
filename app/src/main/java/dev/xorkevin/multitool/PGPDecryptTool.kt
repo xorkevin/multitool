@@ -31,17 +31,13 @@ import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.withContext
-import org.bouncycastle.bcpg.KeyIdentifier
 import org.bouncycastle.openpgp.PGPEncryptedDataList
 import org.bouncycastle.openpgp.PGPException
 import org.bouncycastle.openpgp.PGPLiteralData
 import org.bouncycastle.openpgp.PGPPublicKeyEncryptedData
-import org.bouncycastle.openpgp.PGPSecretKey
 import org.bouncycastle.openpgp.PGPUtil
 import org.bouncycastle.openpgp.bc.BcPGPObjectFactory
 import org.bouncycastle.openpgp.bc.BcPGPSecretKeyRingCollection
-import org.bouncycastle.openpgp.operator.bc.BcPBESecretKeyDecryptorBuilder
-import org.bouncycastle.openpgp.operator.bc.BcPGPDigestCalculatorProvider
 import org.bouncycastle.openpgp.operator.bc.BcPublicKeyDataDecryptorFactory
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
@@ -217,20 +213,21 @@ internal fun gpgDecryptMessage(
     } catch (e: IOException) {
         return Result.failure(e)
     }
-    return pgpObjFactory.firstNotNullOfOrNull {
-        if (it !is PGPEncryptedDataList) {
+    return pgpObjFactory.firstNotNullOfOrNull { pgpObj ->
+        if (pgpObj !is PGPEncryptedDataList) {
             return@firstNotNullOfOrNull null
         }
-        it.firstNotNullOfOrNull { encData ->
+        pgpObj.firstNotNullOfOrNull { encData ->
             if (encData !is PGPPublicKeyEncryptedData) {
                 return@firstNotNullOfOrNull null
             }
-            val secretKey = findSecretKey(keyringCollection, encData.keyIdentifier)
-                ?: return@firstNotNullOfOrNull null
+            val secretKey = findSecretKey(
+                keyringCollection,
+                encData.keyIdentifier
+            ).getOrElse { return Result.failure(it) }
+            val privateKey =
+                decryptGPGSecretKey(secretKey, passphrase).getOrElse { return Result.failure(it) }
             try {
-                val privateKey = secretKey.extractPrivateKey(
-                    BcPBESecretKeyDecryptorBuilder(BcPGPDigestCalculatorProvider()).build(passphrase.toCharArray())
-                )
                 val dataStream = BcPGPObjectFactory(
                     encData.getDataStream(BcPublicKeyDataDecryptorFactory(privateKey)),
                 )
@@ -252,23 +249,4 @@ internal fun gpgDecryptMessage(
             }
         }
     } ?: return Result.failure(Exception("No encrypted data list in cipher text"))
-}
-
-private fun findSecretKey(
-    keyringCollection: BcPGPSecretKeyRingCollection,
-    identifier: KeyIdentifier,
-): PGPSecretKey? = keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
-
-internal fun loadGPGSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
-    return try {
-        Result.success(
-            BcPGPSecretKeyRingCollection(
-                PGPUtil.getDecoderStream(ByteArrayInputStream(armoredSecretKey.toByteArray())),
-            )
-        )
-    } catch (e: PGPException) {
-        Result.failure(e)
-    } catch (e: IOException) {
-        Result.failure(e)
-    }
 }

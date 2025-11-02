@@ -97,6 +97,9 @@ object Route {
         data object SshKeyManager
 
         @Serializable
+        data object GPGKeyManager
+
+        @Serializable
         data object GitRepoManager
     }
 

@@ -29,6 +29,15 @@ import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import org.apache.sshd.common.config.keys.FilePasswordProvider
 import org.apache.sshd.common.util.security.SecurityUtils
+import org.bouncycastle.bcpg.KeyIdentifier
+import org.bouncycastle.openpgp.PGPException
+import org.bouncycastle.openpgp.PGPPrivateKey
+import org.bouncycastle.openpgp.PGPSecretKey
+import org.bouncycastle.openpgp.PGPUtil
+import org.bouncycastle.openpgp.bc.BcPGPSecretKeyRingCollection
+import org.bouncycastle.openpgp.operator.bc.BcPBESecretKeyDecryptorBuilder
+import org.bouncycastle.openpgp.operator.bc.BcPGPDigestCalculatorProvider
+import java.io.ByteArrayInputStream
 import java.io.IOException
 import java.security.GeneralSecurityException
 import java.security.KeyPair
@@ -527,7 +536,7 @@ class KeyStoreService(appContext: Context) {
                 )
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
-                return@withContext Result.failure<Unit>(e)
+                return@withContext Result.failure(e)
             }
         }
     }
@@ -566,14 +575,123 @@ class KeyStoreService(appContext: Context) {
         }
     }
 
+    suspend fun getAllGPGKeys(): Result<List<GPGKeyNameTuple>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val res = keyDB.gpgKeyDao().getAll()
+                Result.success(res)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun deleteGPGKey(name: String): Result<Unit> {
+        return withContext(Dispatchers.IO) {
+            try {
+                keyDB.gpgKeyDao().deleteByName(name)
+                Result.success(Unit)
+            } catch (e: Exception) {
+                Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun storeGPGKey(name: String, keyStr: String, passphrase: String): Result<Unit> {
+        val rootKey = rootKeyState.value
+        if (rootKey == null) {
+            return Result.failure(Exception("Vault is locked"))
+        }
+
+        withContext(Dispatchers.Default) {
+            val keyringCollection =
+                loadGPGSecretKeys(keyStr).getOrElse { return@withContext Result.failure(it) }
+            var numKeys = 0
+            for (keyring in keyringCollection) {
+                for (key in keyring) {
+                    numKeys++
+                    decryptGPGSecretKey(
+                        key, passphrase
+                    ).getOrElse { return@withContext Result.failure(it) }
+                }
+            }
+            if (numKeys == 0) {
+                return@withContext Result.failure(Exception("Keyring has no keys"))
+            }
+            return@withContext Result.success(Unit)
+        }.getOrElse { return Result.failure(it) }
+
+        val encKey = base64URLRaw.encode(withContext(Dispatchers.Default) {
+            val nonce = ByteArray(CryptoUtil.XCHACHA20_POLY1305_NONCE_SIZE)
+            SecureRandom.getInstanceStrong().nextBytes(nonce)
+            CryptoUtil.encryptXChaCha20Poly1305(rootKey, nonce, keyStr.toByteArray())
+        }.getOrElse { return Result.failure(it) })
+        val encPassphrase = base64URLRaw.encode(withContext(Dispatchers.Default) {
+            val nonce = ByteArray(CryptoUtil.XCHACHA20_POLY1305_NONCE_SIZE)
+            SecureRandom.getInstanceStrong().nextBytes(nonce)
+            CryptoUtil.encryptXChaCha20Poly1305(rootKey, nonce, passphrase.toByteArray())
+        }.getOrElse { return Result.failure(it) })
+
+        return withContext(Dispatchers.IO) {
+            try {
+                keyDB.gpgKeyDao().insertAll(
+                    GPGKey(name = name, encKeyStr = encKey, encPassphrase = encPassphrase)
+                )
+                return@withContext Result.success(Unit)
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    suspend fun getGPGKey(name: String, keyIdentifier: KeyIdentifier): Result<PGPPrivateKey> {
+        val rootKey = rootKeyState.value
+        if (rootKey == null) {
+            return Result.failure(Exception("Vault is locked"))
+        }
+        val key = withContext(Dispatchers.IO) {
+            try {
+                return@withContext Result.success(keyDB.gpgKeyDao().getByName(name))
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }.getOrElse { return Result.failure(it) }
+        if (key == null) {
+            return Result.failure(Exception("No key"))
+        }
+        val encKeyBytes = try {
+            base64URLRaw.decode(key.encKeyStr)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        val encPassphraseBytes = try {
+            base64URLRaw.decode(key.encPassphrase)
+        } catch (e: Exception) {
+            return Result.failure(e)
+        }
+        return withContext(Dispatchers.Default) {
+            val keyStr = CryptoUtil.decryptXChaCha20Poly1305(rootKey, encKeyBytes)
+                .getOrElse { return@withContext Result.failure(it) }.decodeToString()
+            val passphrase = CryptoUtil.decryptXChaCha20Poly1305(rootKey, encPassphraseBytes)
+                .getOrElse { return@withContext Result.failure(it) }.decodeToString()
+            val keyringCollection =
+                loadGPGSecretKeys(keyStr).getOrElse { return@withContext Result.failure(it) }
+            val secretKey = findSecretKey(
+                keyringCollection, keyIdentifier
+            ).getOrElse { return@withContext Result.failure(it) }
+            decryptGPGSecretKey(secretKey, passphrase)
+        }
+    }
+
     private val keyDB = Room.databaseBuilder(
         appContext, DB::class.java, "keystore-db"
     ).build()
 
-    @Database(entities = [RootKey::class, SshKey::class], version = 1)
+    @Database(entities = [RootKey::class, SshKey::class, GPGKey::class], version = 1)
     abstract class DB : RoomDatabase() {
         abstract fun rootKeyDao(): RootKeyDao
         abstract fun sshKeyDao(): SshKeyDao
+        abstract fun gpgKeyDao(): GPGKeyDao
     }
 
     @Entity(tableName = "keystore_root_keys", primaryKeys = ["name"])
@@ -627,6 +745,32 @@ class KeyStoreService(appContext: Context) {
         @Query("DELETE FROM keystore_ssh_keys WHERE name = :name")
         suspend fun deleteByName(name: String): Int
     }
+
+    @Entity(tableName = "keystore_gpg_keys", primaryKeys = ["name"])
+    data class GPGKey(
+        @ColumnInfo(name = "name") val name: String,
+        @ColumnInfo(name = "enc_key_str") val encKeyStr: String,
+        @ColumnInfo(name = "enc_passphrase") val encPassphrase: String,
+    )
+
+    data class GPGKeyNameTuple(
+        @ColumnInfo(name = "name") val name: String,
+    )
+
+    @Dao
+    interface GPGKeyDao {
+        @Query("SELECT * FROM keystore_gpg_keys WHERE name = :name")
+        suspend fun getByName(name: String): GPGKey?
+
+        @Query("SELECT name FROM keystore_gpg_keys ORDER BY name")
+        suspend fun getAll(): List<GPGKeyNameTuple>
+
+        @Insert
+        suspend fun insertAll(vararg gpgKeys: GPGKey)
+
+        @Query("DELETE FROM keystore_gpg_keys WHERE name = :name")
+        suspend fun deleteByName(name: String): Int
+    }
 }
 
 internal fun loadSSHPrivateKey(secretKey: String, passphrase: String): Result<KeyPair> {
@@ -654,4 +798,46 @@ internal fun loadSSHPrivateKey(secretKey: String, passphrase: String): Result<Ke
         return Result.failure(Exception("No keys"))
     }
     return Result.success(keypair)
+}
+
+internal fun loadGPGSecretKeys(armoredSecretKey: String): Result<BcPGPSecretKeyRingCollection> {
+    return try {
+        Result.success(
+            BcPGPSecretKeyRingCollection(
+                PGPUtil.getDecoderStream(ByteArrayInputStream(armoredSecretKey.toByteArray())),
+            )
+        )
+    } catch (e: PGPException) {
+        Result.failure(e)
+    } catch (e: IOException) {
+        Result.failure(e)
+    }
+}
+
+internal fun decryptGPGSecretKey(key: PGPSecretKey, passphrase: String): Result<PGPPrivateKey> {
+    return try {
+        Result.success(
+            key.extractPrivateKey(
+                BcPBESecretKeyDecryptorBuilder(
+                    BcPGPDigestCalculatorProvider()
+                ).build(passphrase.toCharArray())
+            )
+        )
+    } catch (e: PGPException) {
+        Result.failure(e)
+    } catch (e: IOException) {
+        Result.failure(e)
+    }
+}
+
+internal fun findSecretKey(
+    keyringCollection: BcPGPSecretKeyRingCollection,
+    identifier: KeyIdentifier,
+): Result<PGPSecretKey> {
+    val secretKey = keyringCollection.firstNotNullOfOrNull { it.getSecretKey(identifier) }
+    return if (secretKey == null) {
+        Result.failure(Exception("Key does not match"))
+    } else {
+        Result.success(secretKey)
+    }
 }

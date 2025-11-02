@@ -67,9 +67,11 @@ fun GitRepoManagerInput() {
     var url by gitRepoManagerViewModel.gitRepoUrl.collectAsStateWithLifecycle()
     var branch by gitRepoManagerViewModel.gitRepoBranch.collectAsStateWithLifecycle()
     var sshKeyName by gitRepoManagerViewModel.gitRepoSshKeyName.collectAsStateWithLifecycle()
+    var gpgKeyName by gitRepoManagerViewModel.gitRepoGPGKeyName.collectAsStateWithLifecycle()
     val addRes by gitRepoManagerViewModel.addGitRepoRes.collectAsStateWithLifecycle()
 
     val sshKeys by gitRepoManagerViewModel.sshKeys.collectAsStateWithLifecycle()
+    val gpgKeys by gitRepoManagerViewModel.gpgKeys.collectAsStateWithLifecycle()
 
     Text(
         text = "Add a repo",
@@ -127,6 +129,15 @@ fun GitRepoManagerInput() {
         value = sshKeyName,
         onValueChange = { sshKeyName = it },
         label = { Text(text = "SSH key name") },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth(),
+    )
+    DropdownFormField(
+        options = gpgKeys.getOrDefault(listOf()).map { it.name },
+        value = gpgKeyName,
+        onValueChange = { gpgKeyName = it },
+        label = { Text(text = "GPG key name") },
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth(),
@@ -208,6 +219,7 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
                     Text(text = "URL: ${it.url}")
                     Text(text = "Branch: ${it.branch}")
                     Text(text = "SSH key: ${it.sshKeyName}")
+                    Text(text = "GPG key: ${it.sshKeyName}")
                 }
             }, trailingContent = {
                 GitRepoManagerDropdownMenu(it.name)
@@ -275,7 +287,8 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
                 TextButton(onClick = { gitRepoManagerViewModel.dismissDeleteGitRepoDir() }) {
                     Text("Cancel")
                 }
-            })
+            },
+        )
     }
 }
 
@@ -355,6 +368,9 @@ class GitRepoManagerViewModel(
     private val _sshKeys =
         MutableViewModelStateFlow(Result.success(listOf<KeyStoreService.SshKeyNameTuple>()))
     val sshKeys = _sshKeys.flow
+    private val _gpgKeys =
+        MutableViewModelStateFlow(Result.success(listOf<KeyStoreService.GPGKeyNameTuple>()))
+    val gpgKeys = _gpgKeys.flow
 
     fun refreshGitRepos() {
         viewModelScope.launch {
@@ -365,6 +381,10 @@ class GitRepoManagerViewModel(
             run {
                 val res = keyStore.getAllSshKeys()
                 _sshKeys.update { res }
+            }
+            run {
+                val res = keyStore.getAllGPGKeys()
+                _gpgKeys.update { res }
             }
         }
     }
@@ -448,6 +468,7 @@ class GitRepoManagerViewModel(
     val gitRepoUrl = MutableViewModelStateFlow("")
     val gitRepoBranch = MutableViewModelStateFlow("")
     val gitRepoSshKeyName = MutableViewModelStateFlow("")
+    val gitRepoGPGKeyName = MutableViewModelStateFlow("")
 
     private val _addGitRepoRes = MutableViewModelStateFlow(Result.success(Unit))
     val addGitRepoRes = _addGitRepoRes.flow
@@ -458,6 +479,7 @@ class GitRepoManagerViewModel(
             val url = gitRepoUrl.value.trim()
             val branch = gitRepoBranch.value.trim()
             val sshKeyName = gitRepoSshKeyName.value.trim()
+            val gpgKeyName = gitRepoGPGKeyName.value.trim()
             if (name.isEmpty()) {
                 _addGitRepoRes.update { Result.failure(Exception("Name may not be empty")) }
                 return@launch
@@ -471,7 +493,11 @@ class GitRepoManagerViewModel(
                 return@launch
             }
             if (sshKeyName.isEmpty()) {
-                _addGitRepoRes.update { Result.failure(Exception("Ssh key may not be empty")) }
+                _addGitRepoRes.update { Result.failure(Exception("SSH key may not be empty")) }
+                return@launch
+            }
+            if (gpgKeyName.isEmpty()) {
+                _addGitRepoRes.update { Result.failure(Exception("GPG key may not be empty")) }
                 return@launch
             }
 
@@ -481,6 +507,7 @@ class GitRepoManagerViewModel(
                     url = url,
                     branch = branch,
                     sshKeyName = sshKeyName,
+                    gpgKeyName = gpgKeyName,
                 )
             )
             _addGitRepoRes.update { res }
@@ -489,6 +516,7 @@ class GitRepoManagerViewModel(
                 gitRepoUrl.update { "" }
                 gitRepoBranch.update { "" }
                 gitRepoSshKeyName.update { "" }
+                gitRepoGPGKeyName.update { "" }
                 refreshGitRepos()
             }
         }

@@ -246,6 +246,7 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         @ColumnInfo(name = "url") val url: String,
         @ColumnInfo(name = "branch") val branch: String,
         @ColumnInfo(name = "ssh_key_name") val sshKeyName: String,
+        @ColumnInfo(name = "gpg_key_name") val gpgKeyName: String,
     )
 
     @Dao
