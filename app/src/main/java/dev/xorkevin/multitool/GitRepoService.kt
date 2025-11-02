@@ -204,6 +204,8 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
 
     data class RepoFile(val path: String, val isDir: Boolean)
 
+    private val ignoredFileNames = setOf(".git", ".gitattributes", ".gpg-id", ".gpg-id.sig")
+
     suspend fun listRepoContents(name: String, dir: String): Result<List<RepoFile>> {
         return withContext(Dispatchers.IO) {
             try {
@@ -216,8 +218,12 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                 if (!subdir.exists() or !subdir.isDirectory) {
                     return@withContext Result.failure(Exception("Repo not cloned"))
                 }
-                return@withContext Result.success(subdir.listFiles()?.map {
-                    RepoFile(Paths.get(dir, it.name).toString(), it.isDirectory)
+                return@withContext Result.success(subdir.listFiles()?.flatMap {
+                    if (ignoredFileNames.contains(it.name)) {
+                        listOf()
+                    } else {
+                        listOf(RepoFile(Paths.get(dir, it.name).toString(), it.isDirectory))
+                    }
                 }?.toList() ?: listOf())
             } catch (e: Exception) {
                 return@withContext Result.failure(e)

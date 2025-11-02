@@ -15,6 +15,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -65,10 +66,11 @@ fun PGPEncryptPublicKeyInput() {
         label = { Text(text = "ASCII armored public key") },
         value = inputPublicKey,
         onValueChange = { inputPublicKey = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { inputPublicKey = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan"
@@ -89,10 +91,11 @@ fun PGPEncryptPlaintextInput() {
         label = { Text(text = "Plaintext") },
         value = inputPlaintext,
         onValueChange = { inputPlaintext = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { inputPlaintext = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan"

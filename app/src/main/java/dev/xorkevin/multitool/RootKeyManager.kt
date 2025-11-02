@@ -23,6 +23,8 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -218,12 +220,13 @@ fun RootKeyManagerSetup() {
             value = rootKeyPassword,
             onValueChange = { rootKeyPassword = it },
             label = { Text(text = "Root Key Password") },
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
             visualTransformation = PasswordVisualTransformation(),
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
             trailingIcon = {
                 QRScannerLauncher(
                     onScan = { rootKeyPassword = (it ?: "").trim() },
-                    modifier = Modifier.padding(16.dp, 8.dp),
+                    modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
                     Icon(
                         imageVector = Icons.Filled.Add,

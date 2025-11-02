@@ -68,7 +68,7 @@ fun VaultUnlocker(content: @Composable (lock: () -> Unit) -> Unit) = ViewModelSc
             trailingIcon = {
                 QRScannerLauncher(
                     onScan = { password = (it ?: "").trim() },
-                    modifier = Modifier.padding(16.dp, 8.dp),
+                    modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
                     Icon(imageVector = Icons.Filled.Add, contentDescription = "Scan password")
                 }

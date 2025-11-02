@@ -93,7 +93,7 @@ fun GitRepoManagerInput() {
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { url = (it ?: "").trim() },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan url"
@@ -111,7 +111,7 @@ fun GitRepoManagerInput() {
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { branch = (it ?: "").trim() },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan branch"

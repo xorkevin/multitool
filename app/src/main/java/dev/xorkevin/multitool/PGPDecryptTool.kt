@@ -15,6 +15,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -67,10 +68,11 @@ fun PGPDecryptSecretKeyInput() {
         label = { Text(text = "ASCII armored secret key") },
         value = inputSecretKey,
         onValueChange = { inputSecretKey = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { inputSecretKey = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan"
@@ -91,10 +93,11 @@ fun PGPDecryptCiphertextInput() {
         label = { Text(text = "Ciphertext") },
         value = inputCiphertext,
         onValueChange = { inputCiphertext = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { inputCiphertext = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan"
@@ -115,10 +118,11 @@ fun PGPDecryptPassphraseInput() {
         label = { Text(text = "Passphrase") },
         value = inputPassphrase,
         onValueChange = { inputPassphrase = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { inputPassphrase = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan"

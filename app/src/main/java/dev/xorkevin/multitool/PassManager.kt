@@ -3,7 +3,6 @@
 package dev.xorkevin.multitool
 
 import android.app.Application
-import android.util.Log
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -15,6 +14,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
@@ -25,14 +25,21 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextField
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -50,6 +57,7 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.nio.file.Paths
 import kotlin.io.path.name
+import kotlin.io.path.nameWithoutExtension
 
 @Composable
 fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerViewModel::class) {
@@ -58,9 +66,7 @@ fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerView
     val snackbarHostState = remember { SnackbarHostState() }
 
     val navigate: (route: Any) -> Unit = remember(navController) {
-        { route ->
-            navController.navigate(route = route)
-        }
+        { route -> navController.navigate(route = route) }
     }
 
     val showSnackbar: suspend (msg: String) -> Unit = remember(snackbarHostState) {
@@ -75,16 +81,22 @@ fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerView
             TopAppBar(
                 title = {
                     Text(text = currentBackStackEntry?.let { backStackEntry ->
-                        if (!backStackEntry.destination.hasRoute(Route.PassManager.Repo::class)) {
-                            "Password Store"
-                        } else {
+                        if (backStackEntry.destination.hasRoute(Route.PassManager.Repo::class)) {
                             val route = backStackEntry.toRoute<Route.PassManager.Repo>()
-                            val name = Paths.get(route.dir).name
-                            if (name == "") {
-                                "/"
+                            if (route.dir == "") {
+                                route.name
                             } else {
-                                name
+                                Paths.get(route.dir).name
                             }
+                        } else if (backStackEntry.destination.hasRoute(Route.PassManager.RepoEntry::class)) {
+                            val route = backStackEntry.toRoute<Route.PassManager.RepoEntry>()
+                            if (route.path == "") {
+                                route.name
+                            } else {
+                                Paths.get(route.path).nameWithoutExtension
+                            }
+                        } else {
+                            "Password Store"
                         }
                     } ?: "Password Store")
                 },
@@ -121,8 +133,11 @@ fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerView
             }
             composable<Route.PassManager.Repo> { backStackEntry ->
                 val route = backStackEntry.toRoute<Route.PassManager.Repo>()
-                Log.i("KEVIN", "route update ${route.name}, ${route.dir}")
                 PassManagerRepo(route.name, route.dir, navigate)
+            }
+            composable<Route.PassManager.RepoEntry> { backStackEntry ->
+                val route = backStackEntry.toRoute<Route.PassManager.RepoEntry>()
+                PassManagerRepoEntry(route.name, route.path)
             }
         }
     }
@@ -205,7 +220,6 @@ fun PassManagerRepoContents(repoName: String, repoDir: String, navigate: (route:
     val passManagerViewModel: PassManagerViewModel = scopedViewModel()
 
     LaunchedEffect(repoName, repoDir) {
-        Log.i("KEVIN", "set location ${repoName}, ${repoDir}")
         passManagerViewModel.setRepoLocation(repoName, repoDir)
     }
 
@@ -222,29 +236,149 @@ fun PassManagerRepoContents(repoName: String, repoDir: String, navigate: (route:
         contents.forEach {
             ListItem(
                 headlineContent = {
-                    Text(text = Paths.get(it.path).name)
+                    Text(
+                        text = if (it.isDir) {
+                            Paths.get(it.path).name
+                        } else {
+                            val p = Paths.get(it.path)
+                            if (p.nameWithoutExtension == "") {
+                                p.name
+                            } else {
+                                p.nameWithoutExtension
+                            }
+                        }
+                    )
                 },
                 trailingContent = {
                     Box(
                         modifier = Modifier.padding(8.dp)
                     ) {
-                        Icon(
-                            Icons.AutoMirrored.Filled.ArrowForward, contentDescription = "View repo"
-                        )
+                        if (it.isDir) {
+                            Icon(
+                                Icons.AutoMirrored.Filled.ArrowForward,
+                                contentDescription = "View repo"
+                            )
+                        }
                     }
                 },
                 modifier = Modifier.clickable(onClick = {
                     if (it.isDir) {
-                        Log.i("KEVIN", "navigate to ${repoName}, ${it.path}")
-                        navigate(
-                            Route.PassManager.Repo(
-                                repoName, it.path,
-                            )
-                        )
+                        navigate(Route.PassManager.Repo(repoName, it.path))
+                    } else {
+                        navigate(Route.PassManager.RepoEntry(repoName, it.path))
                     }
                 }),
             )
         }
+    }
+}
+
+@Composable
+fun PassManagerRepoEntry(repoName: String, repoPath: String) {
+    val scrollState = rememberScrollState()
+    Column(modifier = Modifier.verticalScroll(scrollState)) {
+        VaultUnlocker {
+            PassManagerRepoEntryContents(repoName, repoPath)
+        }
+    }
+}
+
+@Composable
+fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
+    val passManagerViewModel: PassManagerViewModel = scopedViewModel()
+
+    LaunchedEffect(repoName, repoPath) {
+        passManagerViewModel.setRepoEntry(repoName, repoPath)
+    }
+
+    val repoEntry by passManagerViewModel.repoEntry.collectAsStateWithLifecycle()
+    repoEntry.onFailure {
+        Text(
+            text = "Failed to get repo entry: ${it.toString()}",
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
+    }
+    repoEntry.onSuccess { contents ->
+        var showPass by remember { mutableStateOf(false) }
+        TextField(
+            value = contents.password,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(text = "Password") },
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+            visualTransformation = if (showPass) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(
+                    onClick = { showPass = !showPass },
+                    modifier = Modifier.padding(8.dp, 8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Lock, contentDescription = "Show pass"
+                    )
+                }
+            },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+        )
+        var showOTP by remember { mutableStateOf(false) }
+        TextField(
+            value = "",
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(text = "OTP") },
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+            visualTransformation = if (showOTP) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(
+                    onClick = { showOTP = !showOTP },
+                    modifier = Modifier.padding(8.dp, 8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Lock, contentDescription = "Show otp"
+                    )
+                }
+            },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+        )
+        var showRawData by remember { mutableStateOf(false) }
+        TextField(
+            value = contents.rawData,
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(text = "Raw contents") },
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+            visualTransformation = if (showRawData) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(
+                    onClick = { showRawData = !showRawData },
+                    modifier = Modifier.padding(8.dp, 8.dp),
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Lock, contentDescription = "Show raw contents"
+                    )
+                }
+            },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+        )
     }
 }
 
@@ -264,20 +398,43 @@ class PassManagerViewModel(
         }
     }
 
-    data class RepoLocation(val name: String, val dir: String)
+    private data class RepoLocation(val name: String, val dir: String)
 
     private val _repoLocation = MutableViewModelStateFlow(RepoLocation("", ""))
     val repoContents = _repoLocation.flow.mapLatest {
         if (it.name == "") {
             Result.success(listOf())
         } else {
-            Log.i("KEVIN", "get contents ${it.name}, ${it.dir}")
             gitRepoService.listRepoContents(it.name, it.dir)
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), Result.success(listOf()))
 
     fun setRepoLocation(name: String, dir: String) {
         _repoLocation.update { RepoLocation(name, dir) }
+    }
+
+    private data class RepoEntry(val name: String, val path: String)
+    data class RepoEntryContents(val rawData: String, val password: String, val otpUri: String)
+
+    private val _repoEntry = MutableViewModelStateFlow(RepoEntry("", ""))
+    val repoEntry = _repoEntry.flow.mapLatest {
+        if (it.name == "") {
+            Result.success(RepoEntryContents(rawData = "", password = "", otpUri = ""))
+        } else {
+            Result.success(
+                RepoEntryContents(
+                    rawData = "hello\nworld\n", password = "sample password", otpUri = ""
+                )
+            )
+        }
+    }.stateIn(
+        viewModelScope,
+        SharingStarted.WhileSubscribed(),
+        Result.success(RepoEntryContents(rawData = "", password = "", otpUri = ""))
+    )
+
+    fun setRepoEntry(name: String, path: String) {
+        _repoEntry.update { RepoEntry(name, path) }
     }
 
     companion object : ScopedViewModelFactory<PassManagerViewModel> {

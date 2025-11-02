@@ -106,6 +106,9 @@ object Route {
 
         @Serializable
         data class Repo(val name: String, val dir: String)
+
+        @Serializable
+        data class RepoEntry(val name: String, val path: String)
     }
 }
 

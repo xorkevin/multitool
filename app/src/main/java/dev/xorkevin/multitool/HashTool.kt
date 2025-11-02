@@ -15,6 +15,7 @@ import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.ViewModel
@@ -46,6 +47,7 @@ fun HashInput() {
     TextField(
         value = input,
         onValueChange = { input = it },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         modifier = Modifier
             .padding(8.dp)
             .fillMaxWidth()

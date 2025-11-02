@@ -21,6 +21,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -68,10 +70,11 @@ fun SshKeyManagerInput() {
         value = keyStr,
         onValueChange = { keyStr = it },
         label = { Text(text = "Key") },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { keyStr = it ?: "" },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan key"
@@ -86,12 +89,13 @@ fun SshKeyManagerInput() {
         value = passphrase,
         onValueChange = { passphrase = it },
         label = { Text(text = "Passphrase") },
+        textStyle = TextStyle(fontFamily = FontFamily.Monospace),
         visualTransformation = PasswordVisualTransformation(),
         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
         trailingIcon = {
             QRScannerLauncher(
                 onScan = { passphrase = (it ?: "").trim() },
-                modifier = Modifier.padding(16.dp, 8.dp),
+                modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
                     imageVector = Icons.Filled.Add, contentDescription = "Scan passphrase"
