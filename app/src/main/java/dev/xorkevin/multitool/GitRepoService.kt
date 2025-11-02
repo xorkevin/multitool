@@ -22,6 +22,7 @@ import org.eclipse.jgit.transport.sshd.SshdSessionFactory
 import java.io.File
 import java.net.InetSocketAddress
 import java.nio.file.Path
+import java.nio.file.Paths
 import java.security.KeyPair
 import java.security.PublicKey
 import java.util.function.Supplier
@@ -201,14 +202,23 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         }
     }
 
-    suspend fun listRepoContents(name: String): Result<List<String>> {
+    data class RepoFile(val path: String, val isDir: Boolean)
+
+    suspend fun listRepoContents(name: String, dir: String): Result<List<RepoFile>> {
         return withContext(Dispatchers.IO) {
             try {
                 val gitRepoDir = File(reposDir, name)
-                if (!gitRepoDir.exists() or !gitRepoDir.isDirectory) {
+                val subdir = if (dir == "") {
+                    gitRepoDir
+                } else {
+                    File(gitRepoDir, dir)
+                }
+                if (!subdir.exists() or !subdir.isDirectory) {
                     return@withContext Result.failure(Exception("Repo not cloned"))
                 }
-                return@withContext Result.success(gitRepoDir.list()?.asList() ?: listOf())
+                return@withContext Result.success(subdir.listFiles()?.map {
+                    RepoFile(Paths.get(dir, it.name).toString(), it.isDirectory)
+                }?.toList() ?: listOf())
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
             }

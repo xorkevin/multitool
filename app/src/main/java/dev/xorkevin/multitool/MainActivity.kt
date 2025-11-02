@@ -99,11 +99,20 @@ object Route {
         @Serializable
         data object GitRepoManager
     }
+
+    object PassManager {
+        @Serializable
+        data object Home
+
+        @Serializable
+        data class Repo(val name: String, val dir: String)
+    }
 }
 
 data class RouteEntry<T : Any>(val route: T, val name: String)
 
 val topLevelRoutes = listOf(
+    RouteEntry(Route.PassManager.Home, "Password Store"),
     RouteEntry(Route.Tools.Home, "Tools"),
     RouteEntry(Route.Settings.Home, "Settings"),
 )
@@ -156,9 +165,12 @@ fun App() {
         }) {
         NavHost(
             navController = navController,
-            startDestination = Route.Tools.Home,
+            startDestination = Route.PassManager.Home,
             modifier = Modifier.fillMaxSize(),
         ) {
+            composable<Route.PassManager.Home> {
+                PassManager(toggleNavDrawer)
+            }
             composable<Route.Tools.Home> {
                 ToolsNavHost(toggleNavDrawer)
             }

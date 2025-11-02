@@ -192,15 +192,15 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
                 .fillMaxWidth()
         )
     }
-    gitRepos.onSuccess { keys ->
+    gitRepos.onSuccess { repos ->
         Text(
-            text = "${keys.size} Repos",
+            text = "${repos.size} Repos",
             style = MaterialTheme.typography.titleMedium,
             modifier = Modifier
                 .padding(16.dp, 8.dp)
                 .fillMaxWidth()
         )
-        keys.forEach {
+        repos.forEach {
             ListItem(headlineContent = {
                 Text(text = it.name)
             }, supportingContent = {
