@@ -1,10 +1,19 @@
-@file:OptIn(ExperimentalMaterial3Api::class, ExperimentalCoroutinesApi::class)
+@file:OptIn(
+    ExperimentalMaterial3Api::class,
+    ExperimentalCoroutinesApi::class,
+    ExperimentalPermissionsApi::class
+)
 
 package dev.xorkevin.multitool
 
 import android.app.Application
+import android.app.Notification
+import android.app.NotificationChannel
+import android.app.NotificationManager
 import android.content.ClipData
 import android.content.ClipDescription
+import android.content.ClipboardManager
+import android.content.Context
 import android.os.PersistableBundle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
@@ -23,6 +32,7 @@ import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
+import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -48,6 +58,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -62,7 +73,20 @@ import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
+import androidx.work.CoroutineWorker
+import androidx.work.ExistingWorkPolicy
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.OutOfQuotaPolicy
+import androidx.work.WorkManager
+import androidx.work.WorkerParameters
+import androidx.work.await
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.isGranted
+import com.google.accompanist.permissions.rememberPermissionState
+import com.google.accompanist.permissions.shouldShowRationale
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
@@ -73,6 +97,8 @@ import kotlinx.coroutines.launch
 import java.nio.file.Paths
 import kotlin.io.path.name
 import kotlin.io.path.nameWithoutExtension
+import kotlin.time.Duration.Companion.seconds
+
 
 @Composable
 fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(PassManagerViewModel::class) {
@@ -337,7 +363,9 @@ fun PassManagerRepoEntry(repoName: String, repoPath: String) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         VaultUnlocker {
-            PassManagerRepoEntryContents(repoName, repoPath)
+            NotificationPermission {
+                PassManagerRepoEntryContents(repoName, repoPath)
+            }
         }
     }
 }
@@ -351,6 +379,7 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
     }
 
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val clipboard = LocalClipboard.current
 
     val repoEntry by passManagerViewModel.repoEntry.collectAsStateWithLifecycle()
@@ -409,6 +438,7 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                                         )
                                     )
                                 )
+                                enqueueClipboardClear(context)
                             }
                         },
                         modifier = Modifier.padding(8.dp, 8.dp),
@@ -484,6 +514,32 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                 .padding(8.dp)
                 .fillMaxWidth(),
         )
+    }
+}
+
+@Composable
+fun NotificationPermission(content: @Composable () -> Unit) {
+    val notifPermissionState =
+        rememberPermissionState(android.Manifest.permission.POST_NOTIFICATIONS)
+    if (notifPermissionState.status.isGranted) {
+        content()
+    } else {
+        if (notifPermissionState.status.shouldShowRationale) {
+            Text(
+                text = "Notification permission is needed to clear the clipboard",
+                modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            )
+        }
+        Button(
+            onClick = { notifPermissionState.launchPermissionRequest() },
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        ) {
+            Text(text = "Grant notification permission")
+        }
     }
 }
 
@@ -573,4 +629,70 @@ class PassManagerViewModel(
             return PassManagerViewModel(app.container.gitRepoService, app.container.keyStore)
         }
     }
+}
+
+suspend fun enqueueClipboardClear(context: Context) {
+    val manager = WorkManager.getInstance(context)
+    val request = OneTimeWorkRequestBuilder<ClipboardClearWorker>().run {
+        setExpedited(OutOfQuotaPolicy.RUN_AS_NON_EXPEDITED_WORK_REQUEST)
+        build()
+    }
+    manager.enqueueUniqueWork("password-store-clipboard-clear", ExistingWorkPolicy.REPLACE, request)
+        .await()
+}
+
+internal const val clipboardNotificationId = 1
+
+class ClipboardClearWorker(appContext: Context, params: WorkerParameters) :
+    CoroutineWorker(appContext, params) {
+    private val clipboardNotificationChannelId = "password-store-clipboard-clear"
+
+    override suspend fun doWork(): Result {
+        createNotificationChannel()
+        val notifications = applicationContext.getSystemService(NotificationManager::class.java)
+        notifications.notify(clipboardNotificationId, createNotification())
+        try {
+            delay(30.seconds)
+        } catch (_: CancellationException) {
+        } finally {
+            clearClipboard(applicationContext)
+        }
+        return Result.success()
+    }
+
+    private fun createNotification(): Notification {
+        val manager = WorkManager.getInstance(applicationContext)
+        val pendingIntent = manager.createCancelPendingIntent(id)
+        return Notification.Builder(applicationContext, clipboardNotificationChannelId).run {
+            setContentTitle("Password store clipboard")
+            setContentText("Clear clipboard")
+            setSmallIcon(R.drawable.ic_launcher_foreground)
+            setContentIntent(pendingIntent)
+            setDeleteIntent(pendingIntent)
+            setUsesChronometer(true)
+            setChronometerCountDown(true)
+            setShowWhen(true)
+            setWhen(System.currentTimeMillis() + 30_000)
+            setAutoCancel(true)
+            build()
+        }
+    }
+
+    private fun createNotificationChannel() {
+        val notifications = applicationContext.getSystemService(NotificationManager::class.java)
+        notifications.createNotificationChannel(
+            NotificationChannel(
+                clipboardNotificationChannelId,
+                "Password store clipboard clear",
+                NotificationManager.IMPORTANCE_LOW,
+            )
+        )
+    }
+}
+
+internal fun clearClipboard(appContext: Context) {
+    val clipboard = appContext.getSystemService(ClipboardManager::class.java)
+    clipboard.clearPrimaryClip()
+    val notifications = appContext.getSystemService(NotificationManager::class.java)
+    notifications.cancel(clipboardNotificationId)
 }

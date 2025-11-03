@@ -63,6 +63,11 @@ class MainActivity : FragmentActivity() {
         Security.removeProvider(BouncyCastleProvider.PROVIDER_NAME)
         Security.insertProviderAt(BouncyCastleProvider(), 1)
     }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        clearClipboard(applicationContext)
+    }
 }
 
 object Route {
