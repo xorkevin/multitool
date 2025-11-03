@@ -1,14 +1,22 @@
 package dev.xorkevin.multitool
 
+import org.bouncycastle.crypto.Digest
 import org.bouncycastle.crypto.InvalidCipherTextException
 import org.bouncycastle.crypto.digests.Blake2bDigest
+import org.bouncycastle.crypto.digests.SHA1Digest
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.digests.SHA512Digest
 import org.bouncycastle.crypto.engines.ChaChaEngine
 import org.bouncycastle.crypto.generators.Argon2BytesGenerator
+import org.bouncycastle.crypto.macs.HMac
 import org.bouncycastle.crypto.modes.ChaCha20Poly1305
 import org.bouncycastle.crypto.params.Argon2Parameters
 import org.bouncycastle.crypto.params.KeyParameter
 import org.bouncycastle.crypto.params.ParametersWithIV
 import org.bouncycastle.util.Pack
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+import kotlin.experimental.and
 
 class CryptoUtil {
     companion object {
@@ -148,6 +156,46 @@ class CryptoUtil {
             val out = ByteArray(length)
             generator.generateBytes(inp, out)
             return Result.success(out)
+        }
+
+        fun generateHOTP(
+            secret: ByteArray, counter: Long, digest: Digest, codeLength: Int
+        ): String {
+            val hmac = HMac(digest).apply { init(KeyParameter(secret)) }
+            val buf = ByteBuffer.allocate(Long.SIZE_BYTES)
+            buf.order(ByteOrder.BIG_ENDIAN)
+            buf.putLong(counter)
+            hmac.update(buf.array(), 0, Long.SIZE_BYTES)
+            val sum = ByteArray(hmac.macSize)
+            hmac.doFinal(sum, 0)
+            val offset = (sum.last() and 0xf).toInt()
+            val out = ByteBuffer.allocate(4)
+            out.put(sum, offset, 4)
+            var modulus = 1
+            repeat(codeLength) {
+                modulus *= 10
+            }
+            return (out.getInt(0) and 0x7FFFFFFF).mod(modulus).toString().padStart(codeLength, '0')
+        }
+
+        fun generateTOTP(
+            secret: ByteArray, t: Long, period: Long, digest: Digest, codeLength: Int
+        ): String {
+            return generateHOTP(secret, t / period, digest, codeLength)
+        }
+
+        fun generateTOTPNow(
+            secret: ByteArray, period: Long, alg: String, codeLength: Int
+        ): String {
+            val digest = when (alg) {
+                "SHA1" -> SHA1Digest()
+                "SHA256" -> SHA256Digest()
+                "SHA512" -> SHA512Digest()
+                else -> return "-".repeat(codeLength)
+            }
+            return generateTOTP(
+                secret, System.currentTimeMillis() / 1000L, period, digest, codeLength
+            )
         }
     }
 }

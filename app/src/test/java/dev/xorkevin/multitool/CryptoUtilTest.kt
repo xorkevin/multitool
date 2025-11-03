@@ -1,5 +1,8 @@
 package dev.xorkevin.multitool
 
+import org.bouncycastle.crypto.digests.SHA1Digest
+import org.bouncycastle.crypto.digests.SHA256Digest
+import org.bouncycastle.crypto.digests.SHA512Digest
 import org.junit.Assert
 import org.junit.Test
 
@@ -62,21 +65,77 @@ class CryptoUtilTest {
         Assert.assertEquals(
             "5bfea46a014e400602e51dcbe1f6f904d41227ccf795d429bc63d79c49947909",
             CryptoUtil.argon2id("".toByteArray(), testNonce.toByteArray(), 19456, 2, 1, 32)
-                .getOrThrow()
-                .toHexString()
+                .getOrThrow().toHexString()
         )
         Assert.assertEquals(
-            "4686149bbcc87db8f2bfdbd4420e4653b750c8b793367e23aaf486f1b6fe413b",
-            CryptoUtil.argon2id(
-                "hello, world".toByteArray(),
-                testNonce.toByteArray(),
-                19456,
-                2,
-                1,
-                32
-            )
-                .getOrThrow()
-                .toHexString()
+            "4686149bbcc87db8f2bfdbd4420e4653b750c8b793367e23aaf486f1b6fe413b", CryptoUtil.argon2id(
+                "hello, world".toByteArray(), testNonce.toByteArray(), 19456, 2, 1, 32
+            ).getOrThrow().toHexString()
         )
+    }
+
+    @Test
+    fun generateHOTP() {
+        val testSecret = "3132333435363738393031323334353637383930".hexToByteArray()
+        for (testCase in listOf(
+            "755224",
+            "287082",
+            "359152",
+            "969429",
+            "338314",
+            "254676",
+            "287922",
+            "162583",
+            "399871",
+            "520489",
+        ).withIndex()) {
+            Assert.assertEquals(
+                testCase.value,
+                CryptoUtil.generateHOTP(testSecret, testCase.index.toLong(), SHA1Digest(), 6)
+            )
+        }
+    }
+
+    @Test
+    fun generateTOTP() {
+        val seed = "3132333435363738393031323334353637383930".hexToByteArray()
+        val seed32 =
+            "3132333435363738393031323334353637383930313233343536373839303132".hexToByteArray()
+        val seed64 =
+            "31323334353637383930313233343536373839303132333435363738393031323334353637383930313233343536373839303132333435363738393031323334".hexToByteArray()
+        for (testCase in listOf(
+            Triple(59L, "SHA1", "94287082"),
+            Triple(59L, "SHA256", "46119246"),
+            Triple(59L, "SHA512", "90693936"),
+            Triple(1111111109L, "SHA1", "07081804"),
+            Triple(1111111109L, "SHA256", "68084774"),
+            Triple(1111111109L, "SHA512", "25091201"),
+            Triple(1111111111L, "SHA1", "14050471"),
+            Triple(1111111111L, "SHA256", "67062674"),
+            Triple(1111111111L, "SHA512", "99943326"),
+            Triple(1234567890L, "SHA1", "89005924"),
+            Triple(1234567890L, "SHA256", "91819424"),
+            Triple(1234567890L, "SHA512", "93441116"),
+            Triple(2000000000L, "SHA1", "69279037"),
+            Triple(2000000000L, "SHA256", "90698825"),
+            Triple(2000000000L, "SHA512", "38618901"),
+            Triple(20000000000L, "SHA1", "65353130"),
+            Triple(20000000000L, "SHA256", "77737706"),
+            Triple(20000000000L, "SHA512", "47863826"),
+        )) {
+            Assert.assertEquals(
+                testCase.third, CryptoUtil.generateTOTP(
+                    when (testCase.second) {
+                        "SHA256" -> seed32
+                        "SHA512" -> seed64
+                        else -> seed
+                    }, testCase.first, 30L, when (testCase.second) {
+                        "SHA256" -> SHA256Digest()
+                        "SHA512" -> SHA512Digest()
+                        else -> SHA1Digest()
+                    }, 8
+                )
+            )
+        }
     }
 }
