@@ -168,7 +168,7 @@ fun GitRepoManagerList(showSnackbar: suspend (msg: String) -> Unit) {
         gitRepoManagerViewModel.refreshGitRepos()
     }
 
-    LaunchedEffect(Unit) {
+    LaunchedEffect(showSnackbar) {
         gitRepoManagerViewModel.snackEvents.collectLatest {
             showSnackbar(it)
         }
@@ -469,6 +469,7 @@ class GitRepoManagerViewModel(
 
     fun cloneGitRepo(name: String) {
         viewModelScope.launch {
+            _snackEvents.emit("Cloning repo $name")
             val res = gitRepoService.cloneRepo(name)
             _cloneGitRepoRes.update { res }
             res.onSuccess {
@@ -482,6 +483,7 @@ class GitRepoManagerViewModel(
 
     fun pullGitRepo(name: String) {
         viewModelScope.launch {
+            _snackEvents.emit("Pulling repo $name")
             val res = gitRepoService.pullRepo(name)
             _cloneGitRepoRes.update { res }
             res.onSuccess {

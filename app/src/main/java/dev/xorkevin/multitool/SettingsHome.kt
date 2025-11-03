@@ -58,9 +58,7 @@ fun SettingsNavHost(toggleNavDrawer: () -> Unit) {
     }
 
     val showSnackbar: suspend (msg: String) -> Unit = remember(snackbarHostState) {
-        { msg ->
-            snackbarHostState.showSnackbar(msg)
-        }
+        { msg -> snackbarHostState.showSnackbar(msg) }
     }
 
     Scaffold(

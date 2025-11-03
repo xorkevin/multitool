@@ -13,8 +13,10 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.apache.sshd.common.util.io.PathUtils.setUserHomeFolderResolver
 import org.eclipse.jgit.api.Git
+import org.eclipse.jgit.api.ResetCommand
 import org.eclipse.jgit.api.TransportConfigCallback
 import org.eclipse.jgit.transport.CredentialsProvider
+import org.eclipse.jgit.transport.RefSpec
 import org.eclipse.jgit.transport.SshTransport
 import org.eclipse.jgit.transport.Transport
 import org.eclipse.jgit.transport.sshd.ServerKeyDatabase
@@ -26,6 +28,7 @@ import java.nio.file.Paths
 import java.security.KeyPair
 import java.security.PublicKey
 import java.util.function.Supplier
+
 
 class GitRepoService(appContext: Context, private val keyStore: KeyStoreService) {
     private val rootDir = appContext.getDir("git_repo_service", Context.MODE_PRIVATE)
@@ -182,6 +185,8 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         }
     }
 
+    private val gitRemoteName = "origin"
+
     suspend fun cloneRepo(name: String): Result<Unit> {
         val repo = getRepo(name).getOrElse { return Result.failure(it) }
         val sshSessionFactory =
@@ -193,8 +198,8 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                     return@withContext Result.success(Unit)
                 }
                 Git.cloneRepository().setURI(repo.url).setBranch(repo.branch)
-                    .setDirectory(gitRepoDir).setTransportConfigCallback(sshSessionFactory).call()
-                    .use { }
+                    .setDirectory(gitRepoDir).setTransportConfigCallback(sshSessionFactory)
+                    .setRemote(gitRemoteName).call().use { }
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
                 return@withContext Result.failure(e)
@@ -212,8 +217,13 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                 if (!gitRepoDir.exists() or !gitRepoDir.isDirectory) {
                     return@withContext Result.failure(Exception("Git repo not cloned"))
                 }
+                val localRemoteRef = "refs/remotes/$gitRemoteName/${repo.branch}"
+                val refSpec = RefSpec("refs/heads/${repo.branch}:$localRemoteRef")
                 Git.open(gitRepoDir).use { git ->
-                    git.pull().setTransportConfigCallback(sshSessionFactory).call()
+                    git.fetch().setTransportConfigCallback(sshSessionFactory)
+                        .setRemote(gitRemoteName).setRefSpecs(refSpec).call()
+                    git.checkout().setName(repo.branch).call();
+                    git.reset().setMode(ResetCommand.ResetType.HARD).setRef(localRemoteRef).call()
                 }
                 return@withContext Result.success(Unit)
             } catch (e: Exception) {
@@ -238,7 +248,24 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                 if (!subdir.exists() or !subdir.isDirectory) {
                     return@withContext Result.failure(Exception("Repo not cloned"))
                 }
-                return@withContext Result.success(subdir.listFiles()?.flatMap {
+                return@withContext Result.success(subdir.listFiles()?.sortedWith { a, b ->
+                    val aDir = if (a.isDirectory) {
+                        0
+                    } else {
+                        1
+                    }
+                    val bDir = if (b.isDirectory) {
+                        0
+                    } else {
+                        1
+                    }
+                    val dirDiff = aDir - bDir
+                    if (dirDiff == 0) {
+                        a.name.compareTo(b.name)
+                    } else {
+                        dirDiff
+                    }
+                }?.flatMap {
                     if (ignoredFileNames.contains(it.name)) {
                         listOf()
                     } else {

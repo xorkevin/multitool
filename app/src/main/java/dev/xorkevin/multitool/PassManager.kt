@@ -16,6 +16,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -51,7 +54,10 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -60,7 +66,7 @@ import kotlin.io.path.name
 import kotlin.io.path.nameWithoutExtension
 
 @Composable
-fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerViewModel::class) {
+fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(PassManagerViewModel::class) {
     val navController = rememberNavController()
     val currentBackStackEntry by navController.currentBackStackEntryAsState()
     val snackbarHostState = remember { SnackbarHostState() }
@@ -70,8 +76,14 @@ fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerView
     }
 
     val showSnackbar: suspend (msg: String) -> Unit = remember(snackbarHostState) {
-        { msg ->
-            snackbarHostState.showSnackbar(msg)
+        { msg -> snackbarHostState.showSnackbar(msg) }
+    }
+
+    val passManagerViewModel: PassManagerViewModel = scopedViewModel()
+
+    LaunchedEffect(showSnackbar) {
+        passManagerViewModel.snackEvents.collectLatest {
+            showSnackbar(it)
         }
     }
 
@@ -113,6 +125,14 @@ fun PassManager(toggleNavDrawer: () -> Unit) = ViewModelScope(GitRepoManagerView
                                 imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                                 contentDescription = "Back"
                             )
+                        }
+                    }
+                },
+                actions = {
+                    currentBackStackEntry?.let { backStackEntry ->
+                        if (backStackEntry.destination.hasRoute(Route.PassManager.Repo::class)) {
+                            val route = backStackEntry.toRoute<Route.PassManager.Repo>()
+                            PassManagerRepoDropdownMenu(route.name, route.dir)
                         }
                     }
                 },
@@ -206,7 +226,11 @@ fun PassManagerRepoList(navigate: (route: Any) -> Unit) {
 }
 
 @Composable
-fun PassManagerRepo(repoName: String, repoDir: String, navigate: (route: Any) -> Unit) {
+fun PassManagerRepo(
+    repoName: String,
+    repoDir: String,
+    navigate: (route: Any) -> Unit,
+) {
     val scrollState = rememberScrollState()
     Column(modifier = Modifier.verticalScroll(scrollState)) {
         VaultUnlocker {
@@ -216,7 +240,11 @@ fun PassManagerRepo(repoName: String, repoDir: String, navigate: (route: Any) ->
 }
 
 @Composable
-fun PassManagerRepoContents(repoName: String, repoDir: String, navigate: (route: Any) -> Unit) {
+fun PassManagerRepoContents(
+    repoName: String,
+    repoDir: String,
+    navigate: (route: Any) -> Unit,
+) {
     val passManagerViewModel: PassManagerViewModel = scopedViewModel()
 
     LaunchedEffect(repoName, repoDir) {
@@ -269,6 +297,28 @@ fun PassManagerRepoContents(repoName: String, repoDir: String, navigate: (route:
                     }
                 }),
             )
+        }
+    }
+}
+
+@Composable
+fun PassManagerRepoDropdownMenu(name: String, dir: String) {
+    val passManagerViewModel: PassManagerViewModel = scopedViewModel()
+
+    var expanded by remember { mutableStateOf(false) }
+    Box(
+        modifier = Modifier.padding(8.dp)
+    ) {
+        IconButton(onClick = { expanded = !expanded }) {
+            Icon(Icons.Filled.MoreVert, contentDescription = "Pass manager entry options")
+        }
+        DropdownMenu(
+            expanded = expanded, onDismissRequest = { expanded = false },
+        ) {
+            DropdownMenuItem(text = { Text("Pull repo") }, onClick = {
+                expanded = false
+                passManagerViewModel.pullGitRepo(name, dir)
+            })
         }
     }
 }
@@ -398,19 +448,36 @@ class PassManagerViewModel(
         }
     }
 
-    private data class RepoLocation(val name: String, val dir: String)
+    private val _snackEvents = MutableSharedFlow<String>()
+    val snackEvents = _snackEvents.asSharedFlow()
 
-    private val _repoLocation = MutableViewModelStateFlow(RepoLocation("", ""))
-    val repoContents = _repoLocation.flow.mapLatest {
-        if (it.name == "") {
-            Result.success(listOf())
-        } else {
-            gitRepoService.listRepoContents(it.name, it.dir)
-        }
-    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), Result.success(listOf()))
+    private val _repoContents =
+        MutableViewModelStateFlow(Result.success(listOf<GitRepoService.RepoFile>()))
+    val repoContents = _repoContents
 
     fun setRepoLocation(name: String, dir: String) {
-        _repoLocation.update { RepoLocation(name, dir) }
+        viewModelScope.launch {
+            if (name == "") {
+                _repoContents.update { Result.success(listOf()) }
+            } else {
+                val res = gitRepoService.listRepoContents(name, dir)
+                _repoContents.update { res }
+            }
+        }
+    }
+
+    fun pullGitRepo(name: String, dir: String) {
+        viewModelScope.launch {
+            _snackEvents.emit("Pulling repo $name")
+            val res = gitRepoService.pullRepo(name)
+            res.onFailure {
+                _snackEvents.emit("Failed pulling repo $name: ${it.toString()}")
+            }
+            res.onSuccess {
+                _snackEvents.emit("Pulled repo $name")
+                setRepoLocation(name, dir)
+            }
+        }
     }
 
     private data class RepoEntry(val name: String, val path: String)
