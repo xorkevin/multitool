@@ -1,8 +1,6 @@
 package dev.xorkevin.multitool
 
 import org.bouncycastle.crypto.digests.SHA1Digest
-import org.bouncycastle.crypto.digests.SHA256Digest
-import org.bouncycastle.crypto.digests.SHA512Digest
 import org.junit.Assert
 import org.junit.Test
 
@@ -129,11 +127,7 @@ class CryptoUtilTest {
                         "SHA256" -> seed32
                         "SHA512" -> seed64
                         else -> seed
-                    }, testCase.first, 30L, when (testCase.second) {
-                        "SHA256" -> SHA256Digest()
-                        "SHA512" -> SHA512Digest()
-                        else -> SHA1Digest()
-                    }, 8
+                    }, testCase.first, 30L, testCase.second, 8
                 )
             )
         }

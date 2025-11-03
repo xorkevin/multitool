@@ -15,6 +15,9 @@ import android.content.ClipDescription
 import android.content.ClipboardManager
 import android.content.Context
 import android.os.PersistableBundle
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -38,6 +41,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
@@ -55,15 +59,21 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.ClipEntry
 import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.input.TransformedText
 import androidx.compose.ui.text.input.VisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewModelScope
@@ -94,9 +104,15 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import org.apache.commons.codec.binary.Base32
+import org.apache.http.client.utils.URLEncodedUtils
+import java.net.URI
+import java.net.URISyntaxException
+import java.nio.charset.StandardCharsets
 import java.nio.file.Paths
 import kotlin.io.path.name
 import kotlin.io.path.nameWithoutExtension
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 
@@ -392,6 +408,11 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
         )
     }
     repoEntry.onSuccess { contents ->
+        Text(
+            text = repoPath, modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
         var showPass by remember { mutableStateOf(false) }
         TextField(
             value = contents.password,
@@ -454,36 +475,101 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                 .padding(8.dp)
                 .fillMaxWidth(),
         )
-        var showOTP by remember { mutableStateOf(false) }
-        TextField(
-            value = "------",
-            onValueChange = {},
-            readOnly = true,
-            label = { Text(text = "OTP") },
-            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
-            visualTransformation = if (showOTP) {
-                VisualTransformation.None
-            } else {
-                PasswordVisualTransformation()
-            },
-            trailingIcon = {
-                IconButton(
-                    onClick = { showOTP = !showOTP },
-                    modifier = Modifier.padding(8.dp, 8.dp),
-                ) {
-                    Icon(
-                        imageVector = if (showOTP) {
-                            Icons.Default.Visibility
-                        } else {
-                            Icons.Default.VisibilityOff
-                        }, contentDescription = "Show otp"
+        if (contents.totpUri != null) {
+            var showOTP by remember { mutableStateOf(false) }
+            var otp by remember { mutableStateOf("") }
+            var otpProgress by remember { mutableStateOf(Triple(0L, 0L, 1f)) }
+            LaunchedEffect(contents.totpUri) {
+                val totp = contents.totpUri
+                val periodFloat = totp.period * 1000f
+                while (true) {
+                    val now = System.currentTimeMillis() / 1000L
+                    val remainder = totp.period - now.mod(totp.period)
+                    otpProgress = Triple(remainder, (now + remainder) * 1000L, periodFloat)
+                    otp = CryptoUtil.generateTOTP(
+                        totp.secret, now, totp.period, totp.alg, totp.digits
                     )
+                    delay(250.milliseconds)
                 }
-            },
-            modifier = Modifier
-                .padding(8.dp)
-                .fillMaxWidth(),
-        )
+            }
+            TextField(
+                value = if (otp != "") {
+                    otp
+                } else {
+                    "------"
+                },
+                onValueChange = {},
+                readOnly = true,
+                label = { Text(text = "OTP") },
+                textStyle = TextStyle(
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 32.sp,
+                    textAlign = TextAlign.Center
+                ),
+                visualTransformation = if (showOTP && contents.totpUri != null) {
+                    OTPVisualTransformation()
+                } else {
+                    OTPHiddenVisualTransformation()
+                },
+                trailingIcon = {
+                    IconButton(
+                        onClick = { showOTP = !showOTP && contents.totpUri != null },
+                        modifier = Modifier.padding(8.dp, 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (showOTP && contents.totpUri != null) {
+                                Icons.Default.Visibility
+                            } else {
+                                Icons.Default.VisibilityOff
+                            }, contentDescription = "Show otp"
+                        )
+                    }
+                },
+                modifier = Modifier
+                    .padding(8.dp)
+                    .fillMaxWidth(),
+            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            ) {
+                Text(
+                    text = "${otpProgress.first}s",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(8.dp, 0.dp)
+                )
+                val progress by animateFloatAsState(
+                    targetValue = (otpProgress.second - System.currentTimeMillis()) / otpProgress.third,
+                    animationSpec = tween(durationMillis = 2000, easing = LinearEasing),
+                    label = "remaining totp time"
+                )
+                LinearProgressIndicator(
+                    progress = { progress }, modifier = Modifier
+                        .padding(8.dp, 0.dp)
+                        .weight(1f)
+                )
+            }
+            if (contents.totpUri.accountName != "") {
+                Text(
+                    text = "Account: ${contents.totpUri.accountName}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .padding(16.dp, 8.dp)
+                        .fillMaxWidth()
+                )
+            }
+            if (contents.totpUri.issuer != "") {
+                Text(
+                    text = "Issuer: ${contents.totpUri.issuer}",
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier
+                        .padding(16.dp, 8.dp)
+                        .fillMaxWidth()
+                )
+            }
+        }
         var showRawData by remember { mutableStateOf(false) }
         TextField(
             value = contents.rawData,
@@ -543,6 +629,95 @@ fun NotificationPermission(content: @Composable () -> Unit) {
     }
 }
 
+class OTPVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val transformedText = when (text.length) {
+            8 -> AnnotatedString("${text.text.substring(0, 4)} ${text.text.substring(4, 8)}")
+            6 -> AnnotatedString("${text.text.substring(0, 3)} ${text.text.substring(3, 6)}")
+            else -> text
+        }
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = when (text.length) {
+                8 -> if (offset > 3) {
+                    offset + 1
+                } else {
+                    offset
+                }
+
+                6 -> if (offset > 2) {
+                    offset + 1
+                } else {
+                    offset
+                }
+
+                else -> offset
+            }
+
+            override fun transformedToOriginal(offset: Int): Int = when (text.length) {
+                8 -> if (offset > 4) {
+                    offset - 1
+                } else {
+                    offset
+                }
+
+                6 -> if (offset > 3) {
+                    offset - 1
+                } else {
+                    offset
+                }
+
+                else -> offset
+            }
+        }
+        return TransformedText(transformedText, offsetMapping)
+    }
+}
+
+class OTPHiddenVisualTransformation : VisualTransformation {
+    override fun filter(text: AnnotatedString): TransformedText {
+        val t = "\u2022".repeat(text.length)
+        val transformedText = when (text.length) {
+            8 -> AnnotatedString("${t.substring(0, 4)} ${t.substring(4, 8)}")
+            6 -> AnnotatedString("${t.substring(0, 3)} ${t.substring(3, 6)}")
+            else -> AnnotatedString(t)
+        }
+        val offsetMapping = object : OffsetMapping {
+            override fun originalToTransformed(offset: Int): Int = when (text.length) {
+                8 -> if (offset > 3) {
+                    offset + 1
+                } else {
+                    offset
+                }
+
+                6 -> if (offset > 2) {
+                    offset + 1
+                } else {
+                    offset
+                }
+
+                else -> offset
+            }
+
+            override fun transformedToOriginal(offset: Int): Int = when (text.length) {
+                8 -> if (offset > 4) {
+                    offset - 1
+                } else {
+                    offset
+                }
+
+                6 -> if (offset > 3) {
+                    offset - 1
+                } else {
+                    offset
+                }
+
+                else -> offset
+            }
+        }
+        return TransformedText(transformedText, offsetMapping)
+    }
+}
+
 class PassManagerViewModel(
     private val gitRepoService: GitRepoService, private val keyStore: KeyStoreService
 ) : ViewModel() {
@@ -592,13 +767,13 @@ class PassManagerViewModel(
     }
 
     private data class RepoEntry(val name: String, val path: String)
-    data class RepoEntryContents(val rawData: String, val password: String, val otpUri: String)
+    data class RepoEntryContents(val rawData: String, val password: String, val totpUri: TOTPUri?)
 
     private val _repoEntry = MutableViewModelStateFlow(RepoEntry("", ""))
     val repoEntry = _repoEntry.flow.mapLatest { entry ->
         if (entry.name == "") {
             return@mapLatest Result.success(
-                RepoEntryContents(rawData = "", password = "", otpUri = "")
+                RepoEntryContents(rawData = "", password = "", totpUri = null)
             )
         }
         val repo =
@@ -608,15 +783,16 @@ class PassManagerViewModel(
         val data = keyStore.gpgDecrypt(repo.gpgKeyName, encData)
             .getOrElse { return@mapLatest Result.failure(it) }
         val strData = data.decodeToString()
+        val totpUri = strData.lines().firstNotNullOfOrNull { parseTOTPUri(it) }
         return@mapLatest Result.success(
             RepoEntryContents(
-                rawData = strData, password = strData.lines().firstOrNull() ?: "", otpUri = ""
+                rawData = strData, password = strData.lines().firstOrNull() ?: "", totpUri = totpUri
             )
         )
     }.stateIn(
         viewModelScope,
         SharingStarted.WhileSubscribed(),
-        Result.success(RepoEntryContents(rawData = "", password = "", otpUri = ""))
+        Result.success(RepoEntryContents(rawData = "", password = "", totpUri = null))
     )
 
     fun setRepoEntry(name: String, path: String) {
@@ -695,4 +871,110 @@ internal fun clearClipboard(appContext: Context) {
     clipboard.clearPrimaryClip()
     val notifications = appContext.getSystemService(NotificationManager::class.java)
     notifications.cancel(clipboardNotificationId)
+}
+
+class TOTPUri(
+    val secret: ByteArray,
+    val period: Long,
+    val alg: String,
+    val digits: Int,
+    val accountName: String,
+    val issuer: String
+)
+
+private val totpUriPattern = Regex("^otpauth://totp/.*")
+private val totpUriPathSplitPattern = Regex(": *")
+private val totpAllowedAlgs = setOf("SHA1", "SHA256", "SHA512")
+private val totpAllowedDigits = setOf("6", "8")
+
+internal fun parseTOTPUri(s: String): TOTPUri? {
+    if (!totpUriPattern.matches(s)) {
+        return null
+    }
+    val uri = try {
+        URI(s)
+    } catch (_: URISyntaxException) {
+        return null
+    }
+    if (uri.scheme != "otpauth") {
+        return null
+    }
+    if (uri.host != "totp") {
+        return null
+    }
+    val q = try {
+        URLEncodedUtils.parse(uri.query, StandardCharsets.UTF_8)
+    } catch (_: Exception) {
+        return null
+    }
+    val secretStr = q.firstNotNullOfOrNull {
+        if (it.name == "secret") {
+            it.value
+        } else {
+            null
+        }
+    }
+    if (secretStr == null) {
+        return null
+    }
+    val secret = try {
+        Base32().decode(secretStr)
+    } catch (_: Exception) {
+        return null
+    }
+    val algStr = q.firstNotNullOfOrNull {
+        if (it.name == "algorithm") {
+            it.value
+        } else {
+            null
+        }
+    } ?: "SHA1"
+    if (!totpAllowedAlgs.contains(algStr)) {
+        return null
+    }
+    val digitsStr = q.firstNotNullOfOrNull {
+        if (it.name == "digits") {
+            it.value
+        } else {
+            null
+        }
+    } ?: "6"
+    if (!totpAllowedDigits.contains(digitsStr)) {
+        return null
+    }
+    val digits = digitsStr.toIntOrNull()
+    if (digits == null) {
+        return null
+    }
+    val periodStr = q.firstNotNullOfOrNull {
+        if (it.name == "period") {
+            it.value
+        } else {
+            null
+        }
+    } ?: "30"
+    val period = periodStr.toLongOrNull()
+    if (period == null || period < 1) {
+        return null
+    }
+    val pathSplit = uri.path.removePrefix("/").split(totpUriPathSplitPattern, 2)
+    val (accountName, issuer) = if (pathSplit.size == 2) {
+        pathSplit[1] to pathSplit[0]
+    } else {
+        pathSplit[0] to (q.firstNotNullOfOrNull {
+            if (it.name == "issuer") {
+                it.value
+            } else {
+                null
+            }
+        } ?: "")
+    }
+    return TOTPUri(
+        secret = secret,
+        period = period,
+        alg = algStr,
+        digits = digits,
+        accountName = accountName,
+        issuer = issuer,
+    )
 }

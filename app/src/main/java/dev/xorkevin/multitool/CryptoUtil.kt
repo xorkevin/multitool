@@ -159,7 +159,7 @@ class CryptoUtil {
         }
 
         fun generateHOTP(
-            secret: ByteArray, counter: Long, digest: Digest, codeLength: Int
+            secret: ByteArray, counter: Long, digest: Digest, digits: Int
         ): String {
             val hmac = HMac(digest).apply { init(KeyParameter(secret)) }
             val buf = ByteBuffer.allocate(Long.SIZE_BYTES)
@@ -172,30 +172,22 @@ class CryptoUtil {
             val out = ByteBuffer.allocate(4)
             out.put(sum, offset, 4)
             var modulus = 1
-            repeat(codeLength) {
+            repeat(digits) {
                 modulus *= 10
             }
-            return (out.getInt(0) and 0x7FFFFFFF).mod(modulus).toString().padStart(codeLength, '0')
+            return (out.getInt(0) and 0x7FFFFFFF).mod(modulus).toString().padStart(digits, '0')
         }
 
         fun generateTOTP(
-            secret: ByteArray, t: Long, period: Long, digest: Digest, codeLength: Int
-        ): String {
-            return generateHOTP(secret, t / period, digest, codeLength)
-        }
-
-        fun generateTOTPNow(
-            secret: ByteArray, period: Long, alg: String, codeLength: Int
+            secret: ByteArray, t: Long, period: Long, alg: String, digits: Int
         ): String {
             val digest = when (alg) {
                 "SHA1" -> SHA1Digest()
                 "SHA256" -> SHA256Digest()
                 "SHA512" -> SHA512Digest()
-                else -> return "-".repeat(codeLength)
+                else -> return "-".repeat(digits)
             }
-            return generateTOTP(
-                secret, System.currentTimeMillis() / 1000L, period, digest, codeLength
-            )
+            return generateHOTP(secret, t / period, digest, digits)
         }
     }
 }
