@@ -19,3 +19,7 @@
 # If you keep the line number information, uncomment this to
 # hide the original source file name.
 #-renamesourcefileattribute SourceFile
+-dontwarn javax.management.MBeanException
+-dontwarn javax.management.ReflectionException
+-dontwarn net.i2p.crypto.eddsa.EdDSAPublicKey
+-dontwarn org.slf4j.impl.StaticLoggerBinder
