@@ -10,8 +10,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -98,7 +98,7 @@ fun GitRepoManagerInput() {
                 modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add, contentDescription = "Scan url"
+                    imageVector = Icons.Default.QrCodeScanner, contentDescription = "Scan url"
                 )
             }
         },
@@ -116,7 +116,7 @@ fun GitRepoManagerInput() {
                 modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add, contentDescription = "Scan branch"
+                    imageVector = Icons.Default.QrCodeScanner, contentDescription = "Scan branch"
                 )
             }
         },

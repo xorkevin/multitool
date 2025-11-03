@@ -15,7 +15,7 @@ android {
 
     defaultConfig {
         applicationId = "dev.xorkevin.multitool"
-        minSdk = 30
+        minSdk = 33
         targetSdk = 36
         versionCode = 2
         versionName = "1.1"
@@ -90,6 +90,7 @@ dependencies {
     implementation(libs.androidx.room.runtime)
     implementation(libs.androidx.fragment.ktx)
     implementation(libs.androidx.compose.ui.text)
+    implementation(libs.androidx.compose.material.icons.extended)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.room.ktx)
     testImplementation(libs.junit)

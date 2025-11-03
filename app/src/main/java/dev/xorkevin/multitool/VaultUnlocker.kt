@@ -6,7 +6,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -70,7 +70,10 @@ fun VaultUnlocker(content: @Composable (lock: () -> Unit) -> Unit) = ViewModelSc
                     onScan = { password = (it ?: "").trim() },
                     modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
-                    Icon(imageVector = Icons.Filled.Add, contentDescription = "Scan password")
+                    Icon(
+                        imageVector = Icons.Default.QrCodeScanner,
+                        contentDescription = "Scan password"
+                    )
                 }
             },
             modifier = Modifier

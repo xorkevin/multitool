@@ -3,9 +3,13 @@
 package dev.xorkevin.multitool
 
 import android.app.Application
+import android.content.ClipData
+import android.content.ClipDescription
+import android.os.PersistableBundle
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -14,9 +18,11 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.ArrowForward
-import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,8 +43,11 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.ClipEntry
+import androidx.compose.ui.platform.LocalClipboard
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -341,6 +350,9 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
         passManagerViewModel.setRepoEntry(repoName, repoPath)
     }
 
+    val scope = rememberCoroutineScope()
+    val clipboard = LocalClipboard.current
+
     val repoEntry by passManagerViewModel.repoEntry.collectAsStateWithLifecycle()
     repoEntry.onFailure {
         Text(
@@ -364,13 +376,48 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                 PasswordVisualTransformation()
             },
             trailingIcon = {
-                IconButton(
-                    onClick = { showPass = !showPass },
-                    modifier = Modifier.padding(8.dp, 8.dp),
-                ) {
-                    Icon(
-                        imageVector = Icons.Filled.Lock, contentDescription = "Show pass"
-                    )
+                Row {
+                    IconButton(
+                        onClick = { showPass = !showPass },
+                        modifier = Modifier.padding(8.dp, 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = if (showPass) {
+                                Icons.Default.Visibility
+                            } else {
+                                Icons.Default.VisibilityOff
+                            }, contentDescription = "Show pass"
+                        )
+                    }
+                    IconButton(
+                        onClick = {
+                            scope.launch {
+                                clipboard.setClipEntry(
+                                    ClipEntry(
+                                        ClipData(
+                                            ClipDescription(
+                                                "multitool-password-store-pw",
+                                                arrayOf(ClipDescription.MIMETYPE_TEXT_PLAIN),
+                                            ).apply {
+                                                extras = PersistableBundle().apply {
+                                                    putBoolean(
+                                                        ClipDescription.EXTRA_IS_SENSITIVE, true
+                                                    )
+                                                }
+                                            },
+                                            ClipData.Item(contents.password),
+                                        )
+                                    )
+                                )
+                            }
+                        },
+                        modifier = Modifier.padding(8.dp, 8.dp),
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.ContentCopy,
+                            contentDescription = "Copy pass"
+                        )
+                    }
                 }
             },
             modifier = Modifier
@@ -379,7 +426,7 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
         )
         var showOTP by remember { mutableStateOf(false) }
         TextField(
-            value = "",
+            value = "------",
             onValueChange = {},
             readOnly = true,
             label = { Text(text = "OTP") },
@@ -395,7 +442,11 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                     modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Lock, contentDescription = "Show otp"
+                        imageVector = if (showOTP) {
+                            Icons.Default.Visibility
+                        } else {
+                            Icons.Default.VisibilityOff
+                        }, contentDescription = "Show otp"
                     )
                 }
             },
@@ -421,7 +472,11 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                     modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
                     Icon(
-                        imageVector = Icons.Filled.Lock, contentDescription = "Show raw contents"
+                        imageVector = if (showRawData) {
+                            Icons.Default.Visibility
+                        } else {
+                            Icons.Default.VisibilityOff
+                        }, contentDescription = "Show raw contents"
                     )
                 }
             },

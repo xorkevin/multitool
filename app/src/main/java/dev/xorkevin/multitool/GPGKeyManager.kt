@@ -8,7 +8,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Icon
@@ -77,7 +77,7 @@ fun GPGKeyManagerInput() {
                 modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add, contentDescription = "Scan key"
+                    imageVector = Icons.Default.QrCodeScanner, contentDescription = "Scan key"
                 )
             }
         },
@@ -98,7 +98,8 @@ fun GPGKeyManagerInput() {
                 modifier = Modifier.padding(8.dp, 8.dp),
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Add, contentDescription = "Scan passphrase"
+                    imageVector = Icons.Default.QrCodeScanner,
+                    contentDescription = "Scan passphrase"
                 )
             }
         },

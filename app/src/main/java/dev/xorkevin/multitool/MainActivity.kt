@@ -81,9 +81,6 @@ object Route {
 
         @Serializable
         data object QRScanner
-
-        @Serializable
-        data object Biometrics
     }
 
     object Settings {
