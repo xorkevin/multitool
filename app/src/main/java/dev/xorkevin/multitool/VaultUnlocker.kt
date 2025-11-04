@@ -48,7 +48,12 @@ fun VaultUnlocker(content: @Composable (lock: () -> Unit) -> Unit) = ViewModelSc
     val unlockResult by vaultUnlockerViewModel.unlockResult.collectAsStateWithLifecycle()
 
     if (!isSetup) {
-        Text(text = "Vault not setup")
+        Text(
+            text = "Vault not setup",
+            modifier = Modifier
+                .padding(16.dp, 8.dp)
+                .fillMaxWidth()
+        )
     } else if (unlocked) {
         content({ vaultUnlockerViewModel.lock() })
     } else {
