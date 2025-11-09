@@ -214,7 +214,7 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         return withContext(Dispatchers.IO) {
             try {
                 val gitRepoDir = File(reposDir, name)
-                if (!gitRepoDir.exists() or !gitRepoDir.isDirectory) {
+                if (!gitRepoDir.exists() || !gitRepoDir.isDirectory) {
                     return@withContext Result.failure(Exception("Git repo not cloned"))
                 }
                 val localRemoteRef = "refs/remotes/$gitRemoteName/${repo.branch}"
@@ -245,7 +245,7 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
                 } else {
                     File(gitRepoDir, dir)
                 }
-                if (!subdir.exists() or !subdir.isDirectory) {
+                if (!subdir.exists() || !subdir.isDirectory) {
                     return@withContext Result.failure(Exception("Repo not cloned"))
                 }
                 return@withContext Result.success(subdir.listFiles()?.sortedWith { a, b ->
@@ -278,11 +278,57 @@ class GitRepoService(appContext: Context, private val keyStore: KeyStoreService)
         }
     }
 
+    suspend fun listAllRepoContents(name: String): Result<List<String>> {
+        return withContext(Dispatchers.IO) {
+            try {
+                val gitRepoDir = File(reposDir, name)
+                if (!gitRepoDir.exists() || !gitRepoDir.isDirectory) {
+                    return@withContext Result.failure(Exception("Repo not cloned"))
+                }
+                return@withContext Result.success(listAllRepoContentsRec(gitRepoDir, ""))
+            } catch (e: Exception) {
+                return@withContext Result.failure(e)
+            }
+        }
+    }
+
+    private fun listAllRepoContentsRec(f: File, dir: String): List<String> {
+        return f.listFiles()?.sortedWith { a, b ->
+            val aDir = if (a.isDirectory) {
+                0
+            } else {
+                1
+            }
+            val bDir = if (b.isDirectory) {
+                0
+            } else {
+                1
+            }
+            val dirDiff = aDir - bDir
+            if (dirDiff == 0) {
+                a.name.compareTo(b.name)
+            } else {
+                dirDiff
+            }
+        }?.flatMap {
+            if (ignoredFileNames.contains(it.name)) {
+                listOf()
+            } else {
+                val relPath = Paths.get(dir, it.name).toString()
+                if (it.isDirectory) {
+                    listAllRepoContentsRec(File(f, it.name), relPath)
+                } else {
+                    listOf(relPath)
+                }
+            }
+        }?.toList() ?: listOf()
+    }
+
     suspend fun getRepoEntryContent(name: String, path: String): Result<ByteArray> {
         return withContext(Dispatchers.IO) {
             try {
                 val entry = File(File(reposDir, name), path)
-                if (!entry.exists() or entry.isDirectory) {
+                if (!entry.exists() || entry.isDirectory) {
                     return@withContext Result.failure(Exception("Entry not found"))
                 }
                 return@withContext Result.success(entry.readBytes())

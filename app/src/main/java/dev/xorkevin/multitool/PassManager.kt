@@ -1,7 +1,8 @@
 @file:OptIn(
     ExperimentalMaterial3Api::class,
     ExperimentalCoroutinesApi::class,
-    ExperimentalPermissionsApi::class
+    ExperimentalPermissionsApi::class,
+    FlowPreview::class
 )
 
 package dev.xorkevin.multitool
@@ -33,6 +34,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowForward
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material3.Button
@@ -95,15 +97,20 @@ import com.google.accompanist.permissions.isGranted
 import com.google.accompanist.permissions.rememberPermissionState
 import com.google.accompanist.permissions.shouldShowRationale
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.flow.mapLatest
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.apache.commons.codec.binary.Base32
 import org.apache.http.client.utils.URLEncodedUtils
 import java.net.URI
@@ -298,56 +305,118 @@ fun PassManagerRepoContents(
 ) {
     val passManagerViewModel: PassManagerViewModel = scopedViewModel()
 
+    var repoContentSearch by passManagerViewModel.repoContentSearch.collectAsStateWithLifecycle()
+    LaunchedEffect(repoName) {
+        repoContentSearch = ""
+        passManagerViewModel.setRepo(repoName)
+    }
     LaunchedEffect(repoName, repoDir) {
         passManagerViewModel.setRepoLocation(repoName, repoDir)
     }
 
+    TextField(
+        value = repoContentSearch,
+        onValueChange = { repoContentSearch = it },
+        label = { Text(text = "Search") },
+        trailingIcon = {
+            Icon(
+                imageVector = Icons.Default.Search,
+                contentDescription = "Search",
+                Modifier.padding(8.dp, 8.dp)
+            )
+        },
+        modifier = Modifier
+            .padding(8.dp)
+            .fillMaxWidth(),
+    )
+
+    val repoContentSearchResults by passManagerViewModel.repoContentSearchResults.collectAsStateWithLifecycle()
     val repoContents by passManagerViewModel.repoContents.collectAsStateWithLifecycle()
-    repoContents.onFailure {
-        Text(
-            text = "Failed to get repo contents: ${it.toString()}",
-            modifier = Modifier
-                .padding(16.dp, 8.dp)
-                .fillMaxWidth()
-        )
-    }
-    repoContents.onSuccess { contents ->
-        contents.forEach {
-            ListItem(
-                headlineContent = {
-                    Text(
-                        text = if (it.isDir) {
-                            Paths.get(it.path).name
-                        } else {
-                            val p = Paths.get(it.path)
-                            if (p.nameWithoutExtension == "") {
-                                p.name
+
+    if (repoContentSearch != "") {
+        repoContentSearchResults.onFailure {
+            Text(
+                text = "Failed to get repo contents: ${it.toString()}",
+                modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            )
+        }
+        repoContentSearchResults.onSuccess { contents ->
+            contents.forEach {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = "${it.first}, ${it.second}"
+                        )
+                    },
+                    modifier = Modifier.clickable(onClick = {
+                        navigate(Route.PassManager.RepoEntry(repoName, it.first))
+                    }),
+                )
+            }
+            if (contents.isEmpty()) {
+                Text(
+                    text = "No results", modifier = Modifier
+                        .padding(16.dp, 8.dp)
+                        .fillMaxWidth()
+                )
+            }
+        }
+    } else {
+        repoContents.onFailure {
+            Text(
+                text = "Failed to get repo contents: ${it.toString()}",
+                modifier = Modifier
+                    .padding(16.dp, 8.dp)
+                    .fillMaxWidth()
+            )
+        }
+        repoContents.onSuccess { contents ->
+            contents.forEach {
+                ListItem(
+                    headlineContent = {
+                        Text(
+                            text = if (it.isDir) {
+                                Paths.get(it.path).name
                             } else {
-                                p.nameWithoutExtension
+                                val p = Paths.get(it.path)
+                                if (p.nameWithoutExtension == "") {
+                                    p.name
+                                } else {
+                                    p.nameWithoutExtension
+                                }
+                            }
+                        )
+                    },
+                    trailingContent = {
+                        Box(
+                            modifier = Modifier.padding(8.dp)
+                        ) {
+                            if (it.isDir) {
+                                Icon(
+                                    Icons.AutoMirrored.Filled.ArrowForward,
+                                    contentDescription = "View directory"
+                                )
                             }
                         }
-                    )
-                },
-                trailingContent = {
-                    Box(
-                        modifier = Modifier.padding(8.dp)
-                    ) {
+                    },
+                    modifier = Modifier.clickable(onClick = {
                         if (it.isDir) {
-                            Icon(
-                                Icons.AutoMirrored.Filled.ArrowForward,
-                                contentDescription = "View repo"
-                            )
+                            navigate(Route.PassManager.Repo(repoName, it.path))
+                        } else {
+                            navigate(Route.PassManager.RepoEntry(repoName, it.path))
                         }
-                    }
-                },
-                modifier = Modifier.clickable(onClick = {
-                    if (it.isDir) {
-                        navigate(Route.PassManager.Repo(repoName, it.path))
-                    } else {
-                        navigate(Route.PassManager.RepoEntry(repoName, it.path))
-                    }
-                }),
-            )
+                    }),
+                )
+            }
+            if (contents.isEmpty()) {
+                Text(
+                    text = "Empty dir", modifier = Modifier
+                        .padding(16.dp, 8.dp)
+                        .fillMaxWidth()
+                )
+            }
         }
     }
 }
@@ -415,7 +484,11 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
         )
         var showPass by remember { mutableStateOf(false) }
         TextField(
-            value = contents.password,
+            value = if (showPass) {
+                contents.password
+            } else {
+                "------------"
+            },
             onValueChange = {},
             readOnly = true,
             label = { Text(text = "Password") },
@@ -478,16 +551,19 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
         if (contents.totpUri != null) {
             var showOTP by remember { mutableStateOf(false) }
             var otp by remember { mutableStateOf("") }
-            var otpProgress by remember { mutableStateOf(Triple(0L, 0L, 1f)) }
+            var otpProgress by remember { mutableStateOf(0L to 1f) }
             LaunchedEffect(contents.totpUri) {
                 val totp = contents.totpUri
-                val periodFloat = totp.period * 1000f
+                val periodMSFloat = totp.period * 1000f
+                val periodMS = totp.period * 1000
                 while (true) {
-                    val now = System.currentTimeMillis() / 1000L
-                    val remainder = totp.period - now.mod(totp.period)
-                    otpProgress = Triple(remainder, (now + remainder) * 1000L, periodFloat)
+                    val nowMS = System.currentTimeMillis()
+                    val nowS = nowMS / 1000
+                    val remainderMS = periodMS - nowMS.mod(periodMS)
+                    val remainderS = remainderMS / 1000
+                    otpProgress = remainderS to remainderMS / periodMSFloat
                     otp = CryptoUtil.generateTOTP(
-                        totp.secret, now, totp.period, totp.alg, totp.digits
+                        totp.secret, nowS, totp.period, totp.alg, totp.digits
                     )
                     delay(250.milliseconds)
                 }
@@ -506,18 +582,18 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                     fontSize = 32.sp,
                     textAlign = TextAlign.Center
                 ),
-                visualTransformation = if (showOTP && contents.totpUri != null) {
+                visualTransformation = if (showOTP) {
                     OTPVisualTransformation()
                 } else {
                     OTPHiddenVisualTransformation()
                 },
                 trailingIcon = {
                     IconButton(
-                        onClick = { showOTP = !showOTP && contents.totpUri != null },
+                        onClick = { showOTP = !showOTP },
                         modifier = Modifier.padding(8.dp, 8.dp),
                     ) {
                         Icon(
-                            imageVector = if (showOTP && contents.totpUri != null) {
+                            imageVector = if (showOTP) {
                                 Icons.Default.Visibility
                             } else {
                                 Icons.Default.VisibilityOff
@@ -536,13 +612,13 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                     .fillMaxWidth()
             ) {
                 Text(
-                    text = "${otpProgress.first}s",
+                    text = "${otpProgress.first}s".padStart(3, ' '),
                     style = MaterialTheme.typography.bodySmall,
                     modifier = Modifier.padding(8.dp, 0.dp)
                 )
                 val progress by animateFloatAsState(
-                    targetValue = (otpProgress.second - System.currentTimeMillis()) / otpProgress.third,
-                    animationSpec = tween(durationMillis = 2000, easing = LinearEasing),
+                    targetValue = otpProgress.second,
+                    animationSpec = tween(durationMillis = 500, easing = LinearEasing),
                     label = "remaining totp time"
                 )
                 LinearProgressIndicator(
@@ -570,29 +646,67 @@ fun PassManagerRepoEntryContents(repoName: String, repoPath: String) {
                 )
             }
         }
-        var showRawData by remember { mutableStateOf(false) }
+        var showAdditionalData by remember { mutableStateOf(false) }
         TextField(
-            value = contents.rawData,
+            value = if (showAdditionalData) {
+                contents.additionalData
+            } else {
+                "------------"
+            },
             onValueChange = {},
             readOnly = true,
-            label = { Text(text = "Raw contents") },
+            label = { Text(text = "Additional data") },
             textStyle = TextStyle(fontFamily = FontFamily.Monospace),
-            visualTransformation = if (showRawData) {
+            visualTransformation = if (showAdditionalData) {
                 VisualTransformation.None
             } else {
                 PasswordVisualTransformation()
             },
             trailingIcon = {
                 IconButton(
-                    onClick = { showRawData = !showRawData },
+                    onClick = { showAdditionalData = !showAdditionalData },
                     modifier = Modifier.padding(8.dp, 8.dp),
                 ) {
                     Icon(
-                        imageVector = if (showRawData) {
+                        imageVector = if (showAdditionalData) {
                             Icons.Default.Visibility
                         } else {
                             Icons.Default.VisibilityOff
-                        }, contentDescription = "Show raw contents"
+                        }, contentDescription = "Show additional data"
+                    )
+                }
+            },
+            modifier = Modifier
+                .padding(8.dp)
+                .fillMaxWidth(),
+        )
+        var showTOTPSecret by remember { mutableStateOf(false) }
+        TextField(
+            value = if (showTOTPSecret) {
+                contents.totpSecret
+            } else {
+                "------------"
+            },
+            onValueChange = {},
+            readOnly = true,
+            label = { Text(text = "TOTP Secret") },
+            textStyle = TextStyle(fontFamily = FontFamily.Monospace),
+            visualTransformation = if (showTOTPSecret) {
+                VisualTransformation.None
+            } else {
+                PasswordVisualTransformation()
+            },
+            trailingIcon = {
+                IconButton(
+                    onClick = { showTOTPSecret = !showTOTPSecret },
+                    modifier = Modifier.padding(8.dp, 8.dp),
+                ) {
+                    Icon(
+                        imageVector = if (showTOTPSecret) {
+                            Icons.Default.Visibility
+                        } else {
+                            Icons.Default.VisibilityOff
+                        }, contentDescription = "Show TOTP secret"
                     )
                 }
             },
@@ -737,9 +851,41 @@ class PassManagerViewModel(
     private val _snackEvents = MutableSharedFlow<String>()
     val snackEvents = _snackEvents.asSharedFlow()
 
+    private val allRepoContents = MutableViewModelStateFlow(Result.success(listOf<String>()))
+
+    fun setRepo(name: String) {
+        viewModelScope.launch {
+            if (name == "") {
+                allRepoContents.update { Result.success(listOf()) }
+            } else {
+                val res = gitRepoService.listAllRepoContents(name)
+                allRepoContents.update { res }
+            }
+        }
+    }
+
+    val repoContentSearch = MutableViewModelStateFlow("")
+    val repoContentSearchResults = combine(
+        allRepoContents.flow, repoContentSearch.flow.debounce(125.milliseconds)
+    ) { a, b -> a to b }.mapLatest { (contentsResult, search) ->
+        if (search == "") {
+            return@mapLatest Result.success(listOf())
+        }
+        val contents = contentsResult.getOrElse { return@mapLatest Result.failure(it) }
+        delay(125.milliseconds)
+        withContext(Dispatchers.Default) {
+            Result.success(
+                contents.asSequence()
+                    .map { it to StringSearchUtil.searchSmithWaterman(it, search) }
+                    .filter { it.second > 0 }.sortedByDescending { it.second }.toList()
+            )
+        }
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(), Result.success(listOf()))
+
     private val _repoContents =
         MutableViewModelStateFlow(Result.success(listOf<GitRepoService.RepoFile>()))
-    val repoContents = _repoContents
+    val repoContents = _repoContents.flow
+
 
     fun setRepoLocation(name: String, dir: String) {
         viewModelScope.launch {
@@ -767,13 +913,20 @@ class PassManagerViewModel(
     }
 
     private data class RepoEntry(val name: String, val path: String)
-    data class RepoEntryContents(val rawData: String, val password: String, val totpUri: TOTPUri?)
+    data class RepoEntryContents(
+        val additionalData: String,
+        val password: String,
+        val totpUri: TOTPUri?,
+        val totpSecret: String
+    )
 
     private val _repoEntry = MutableViewModelStateFlow(RepoEntry("", ""))
     val repoEntry = _repoEntry.flow.mapLatest { entry ->
         if (entry.name == "") {
             return@mapLatest Result.success(
-                RepoEntryContents(rawData = "", password = "", totpUri = null)
+                RepoEntryContents(
+                    additionalData = "", password = "", totpUri = null, totpSecret = ""
+                )
             )
         }
         val repo =
@@ -782,17 +935,24 @@ class PassManagerViewModel(
             .getOrElse { return@mapLatest Result.failure(it) }
         val data = keyStore.gpgDecrypt(repo.gpgKeyName, encData)
             .getOrElse { return@mapLatest Result.failure(it) }
-        val strData = data.decodeToString()
-        val totpUri = strData.lines().firstNotNullOfOrNull { parseTOTPUri(it) }
+        val strData = data.decodeToString().lines()
+        val totpUri = strData.firstNotNullOfOrNull { parseTOTPUri(it) }
+        val additionalData = strData.subList(1, strData.size).filter { !totpUriPattern.matches(it) }
+            .joinToString(separator = "\n", postfix = "\n")
+        val totpSecret = strData.subList(1, strData.size).filter { totpUriPattern.matches(it) }
+            .joinToString(separator = "\n", postfix = "\n")
         return@mapLatest Result.success(
             RepoEntryContents(
-                rawData = strData, password = strData.lines().firstOrNull() ?: "", totpUri = totpUri
-            )
+                additionalData = additionalData,
+                password = strData.firstOrNull() ?: "", totpUri = totpUri, totpSecret = totpSecret,
+            ),
         )
     }.stateIn(
-        viewModelScope,
-        SharingStarted.WhileSubscribed(),
-        Result.success(RepoEntryContents(rawData = "", password = "", totpUri = null))
+        viewModelScope, SharingStarted.WhileSubscribed(), Result.success(
+            RepoEntryContents(
+                additionalData = "", password = "", totpUri = null, totpSecret = ""
+            )
+        )
     )
 
     fun setRepoEntry(name: String, path: String) {
@@ -942,10 +1102,7 @@ internal fun parseTOTPUri(s: String): TOTPUri? {
     if (!totpAllowedDigits.contains(digitsStr)) {
         return null
     }
-    val digits = digitsStr.toIntOrNull()
-    if (digits == null) {
-        return null
-    }
+    val digits = digitsStr.toIntOrNull() ?: return null
     val periodStr = q.firstNotNullOfOrNull {
         if (it.name == "period") {
             it.value
