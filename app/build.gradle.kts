@@ -11,12 +11,12 @@ plugins {
 
 android {
     namespace = "dev.xorkevin.multitool"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "dev.xorkevin.multitool"
         minSdk = 33
-        targetSdk = 36
+        targetSdk = 37
         versionCode = 5
         versionName = "2.2"
 
